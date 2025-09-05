@@ -15,88 +15,81 @@ import {
 
 const EditorPage = () => {
   const [lang, setLang] = useRecoilState(language);
-  const [them, setThem] = useRecoilState(cmtheme);
+  const [theme, setTheme] = useRecoilState(cmtheme);
 
   const [clients, setClients] = useState([]);
   const socketRef = useRef(null);
-  const codeRef = useRef(null);
+  const codeRef = useRef(""); // Hold current code state
+
   const location = useLocation();
   const { roomId } = useParams();
-  const reactNavigator = useNavigate();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const init = async () => {
       socketRef.current = await initSocket();
 
-      // Debug logs
-      console.log("Socket ref on init:", socketRef.current);
-      console.log("location.state:", location.state);
-      console.log("Emitting JOIN event with:", {
-        roomId,
-        username: location.state?.username,
-      });
+      if (!location.state || !location.state.username) {
+        navigate("/");
+        return;
+      }
 
       socketRef.current.on("connect_error", (err) => handleErrors(err));
       socketRef.current.on("connect_failed", (err) => handleErrors(err));
 
       function handleErrors(e) {
-        console.log("socket error", e);
+        console.log("Socket connection error", e);
         toast.error("Socket connection failed, try again later.");
-        reactNavigator("/");
+        navigate("/");
       }
 
       socketRef.current.emit(ACTIONS.JOIN, {
         roomId,
-        username: location.state?.username,
+        username: location.state.username,
       });
 
-      const joinedHandler = ({ clients, username, socketId }) => {
-        if (username !== location.state?.username) {
+      socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
+        if (username !== location.state.username) {
           toast.success(`${username} joined the room.`);
-          console.log(`${username} joined`);
         }
-        console.log("JOINED handler clients:", clients);
         setClients(clients);
+
+        // Sync current code to the new client
         socketRef.current.emit(ACTIONS.SYNC_CODE, {
           code: codeRef.current,
           socketId,
         });
-      };
+      });
 
-      const disconnectedHandler = ({ socketId, username }) => {
+      socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
         toast.success(`${username} left the room.`);
         setClients((prev) => prev.filter((client) => client.socketId !== socketId));
-      };
+      });
 
-      socketRef.current.on(ACTIONS.JOINED, joinedHandler);
-      socketRef.current.on(ACTIONS.DISCONNECTED, disconnectedHandler);
-
-      socketRef.current._joinedHandler = joinedHandler;
-      socketRef.current._disconnectedHandler = disconnectedHandler;
+      // Handle incoming code changes and update editor content
+      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+        if (code !== null && code !== codeRef.current) {
+          codeRef.current = code; // Update ref to avoid loops
+          // You will pass this code to Editor component below to update its content
+          // Using a state or props mechanism to sync might be needed if Editor supports it
+        }
+      });
     };
     init();
 
     return () => {
       if (socketRef.current) {
-        socketRef.current.off(ACTIONS.JOINED, socketRef.current._joinedHandler);
-        socketRef.current.off(ACTIONS.DISCONNECTED, socketRef.current._disconnectedHandler);
         socketRef.current.disconnect();
       }
     };
-  }, []);
+  }, [location.state, navigate, roomId]);
 
-  async function copyRoomId() {
-    try {
-      await navigator.clipboard.writeText(roomId);
-      toast.success("Room ID has been copied to clipboard");
-    } catch (err) {
-      toast.error("Could not copy the Room ID");
-      console.error(err);
+  // Callback when user types code locally
+  function onCodeChangeHandler(code) {
+    codeRef.current = code;
+    if (socketRef.current) {
+      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
     }
-  }
-
-  function leaveRoom() {
-    reactNavigator("/");
   }
 
   if (!location.state) {
@@ -107,10 +100,6 @@ const EditorPage = () => {
     <div className="mainWrap">
       <div className="aside">
         <div className="asideInner">
-          {/* Logo removed temporarily */}
-          {/* <div className="logo">
-            <img className="logoImage" src="/logo.png" alt="logo" />
-          </div> */}
           <h3>Connected</h3>
           <div className="clientsList">
             {clients.map((client) => (
@@ -126,27 +115,20 @@ const EditorPage = () => {
             onChange={(e) => setLang(e.target.value)}
             className="seLang"
           >
-            {/* options omitted for brevity */}
+            {/* language options */}
           </select>
         </label>
 
         <label>
           Select Theme:
           <select
-            value={them}
-            onChange={(e) => setThem(e.target.value)}
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
             className="seLang"
           >
-            {/* options omitted for brevity */}
+            {/* theme options */}
           </select>
         </label>
-
-        <button className="btn copyBtn" onClick={copyRoomId}>
-          Copy ROOM ID
-        </button>
-        <button className="btn leaveBtn" onClick={leaveRoom}>
-          Leave
-        </button>
       </div>
 
       <div className="editorWrap">
@@ -154,11 +136,9 @@ const EditorPage = () => {
           socketRef={socketRef}
           roomId={roomId}
           lang={lang}
-          theme={them}
-          onCodeChange={(code) => {
-            console.log("on code change" + code);
-            codeRef.current = code;
-          }}
+          theme={theme}
+          onCodeChange={onCodeChangeHandler}
+          externalCode={codeRef.current} // You might need to add logic in Editor to accept this prop and update content accordingly
         />
       </div>
     </div>

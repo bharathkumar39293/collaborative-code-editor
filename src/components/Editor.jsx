@@ -1,30 +1,30 @@
 import React, { useEffect, useRef } from "react";
-import { language, cmtheme } from "../atoms";
 import { useRecoilValue } from "recoil";
+import { language, cmtheme } from "../atoms";
 import ACTIONS from "../actions/Actions";
 import Codemirror from "codemirror";
 import "codemirror/lib/codemirror.css";
 import "codemirror/theme/monokai.css";
 import "codemirror/theme/material.css";
-// Import all required language modes:
 import "codemirror/mode/javascript/javascript";
 import "codemirror/mode/python/python";
-import "codemirror/mode/clike/clike"; // C, C++, Java, etc.
+import "codemirror/mode/clike/clike";
 import "codemirror/addon/edit/closetag";
 import "codemirror/addon/edit/closebrackets";
-import "codemirror/addon/scroll/simplescrollbars.css";
 
-const Editor = ({ socketRef, roomId, onCodeChange }) => {
+const Editor = ({ socketRef, roomId, onCodeChange, externalCode }) => {
   const editorRef = useRef(null);
   const lang = useRecoilValue(language);
   const editorTheme = useRecoilValue(cmtheme);
 
+  // Flag to prevent echo update loops
+  const isUpdatingFromExternal = useRef(false);
+
   useEffect(() => {
-    // Only run once; mode/theme can be changed via setOption
     editorRef.current = Codemirror.fromTextArea(
       document.getElementById("realtimeEditor"),
       {
-        mode: lang, // Pass a string like "javascript" or "python"
+        mode: lang,
         theme: editorTheme,
         autoCloseTags: true,
         autoCloseBrackets: true,
@@ -34,13 +34,18 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
 
     editorRef.current.on("change", (instance, changes) => {
       const { origin } = changes;
+      if (origin === "setValue") {
+        // Ignore changes triggered by setValue to avoid loops
+        return;
+      }
       const code = instance.getValue();
-      onCodeChange(code);
-      if (origin !== "setValue") {
-        socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-          roomId,
-          code,
-        });
+
+      // Prevent emitting if we are updating from external code
+      if (!isUpdatingFromExternal.current) {
+        onCodeChange(code);
+        if (socketRef.current) {
+          socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
+        }
       }
     });
 
@@ -50,39 +55,30 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
         editorRef.current = null;
       }
     };
-  }, []); // Do NOT depend on lang/theme here
+  }, []); // Run only once on mount
 
-  // Dynamically update theme
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.setOption("theme", editorTheme);
     }
   }, [editorTheme]);
 
-  // Dynamically update language mode
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.setOption("mode", lang);
     }
   }, [lang]);
 
+  // Update editor content when external code updates
   useEffect(() => {
-    if (!socketRef.current) return;
-
-    const handler = ({ code }) => {
-      if (code !== null && editorRef.current) {
-        editorRef.current.setValue(code);
+    if (externalCode != null && editorRef.current) {
+      if (externalCode !== editorRef.current.getValue()) {
+        isUpdatingFromExternal.current = true;
+        editorRef.current.setValue(externalCode);
+        isUpdatingFromExternal.current = false;
       }
-    };
-
-    socketRef.current.on(ACTIONS.CODE_CHANGE, handler);
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off(ACTIONS.CODE_CHANGE, handler);
-      }
-    };
-  }, [socketRef]);
+    }
+  }, [externalCode]);
 
   return <textarea id="realtimeEditor"></textarea>;
 };
