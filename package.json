@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js"
   },
   "dependencies": {
     "codemirror": "^5.65.20",
+    "express": "^4.21.2",
     "react": "^18.2.0",
     "react-avatar": "^5.0.4",
     "react-dom": "^18.2.0",
