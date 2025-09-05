@@ -8,5 +8,5 @@ export const initSocket = async () => {
         transports: ['websocket'],
     };
     // Use your actual backend address/port
-    return io("https://collaborative-code-editor-1-lpig.onrender.com", options);
+    return io("https://collaborative-code-editor-server-t79n.onrender.com/", options);
 };
