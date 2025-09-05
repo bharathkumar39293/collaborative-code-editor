@@ -13,7 +13,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "https://collaborative-code-editor-1-lpig.onrender.com",
+    origin: "https://collaborative-code-editor-server-t79n.onrender.com/",
     methods: ["GET", "POST"],
   },
 });
