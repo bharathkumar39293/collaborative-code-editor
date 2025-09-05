@@ -107,9 +107,10 @@ const EditorPage = () => {
     <div className="mainWrap">
       <div className="aside">
         <div className="asideInner">
-          <div className="logo">
+          {/* Logo removed temporarily */}
+          {/* <div className="logo">
             <img className="logoImage" src="/logo.png" alt="logo" />
-          </div>
+          </div> */}
           <h3>Connected</h3>
           <div className="clientsList">
             {clients.map((client) => (
@@ -125,7 +126,7 @@ const EditorPage = () => {
             onChange={(e) => setLang(e.target.value)}
             className="seLang"
           >
-            {/* options omitted for brevity, keep as in your original */}
+            {/* options omitted for brevity */}
           </select>
         </label>
 
@@ -136,7 +137,7 @@ const EditorPage = () => {
             onChange={(e) => setThem(e.target.value)}
             className="seLang"
           >
-            {/* options omitted for brevity, keep as in your original */}
+            {/* options omitted for brevity */}
           </select>
         </label>
 
