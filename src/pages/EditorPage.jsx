@@ -28,6 +28,14 @@ const EditorPage = () => {
     const init = async () => {
       socketRef.current = await initSocket();
 
+      // Debug logs
+      console.log("Socket ref on init:", socketRef.current);
+      console.log("location.state:", location.state);
+      console.log("Emitting JOIN event with:", {
+        roomId,
+        username: location.state?.username,
+      });
+
       socketRef.current.on("connect_error", (err) => handleErrors(err));
       socketRef.current.on("connect_failed", (err) => handleErrors(err));
 
@@ -47,6 +55,7 @@ const EditorPage = () => {
           toast.success(`${username} joined the room.`);
           console.log(`${username} joined`);
         }
+        console.log("JOINED handler clients:", clients);
         setClients(clients);
         socketRef.current.emit(ACTIONS.SYNC_CODE, {
           code: codeRef.current,
@@ -62,7 +71,6 @@ const EditorPage = () => {
       socketRef.current.on(ACTIONS.JOINED, joinedHandler);
       socketRef.current.on(ACTIONS.DISCONNECTED, disconnectedHandler);
 
-      // Store handlers so they can be used in cleanup
       socketRef.current._joinedHandler = joinedHandler;
       socketRef.current._disconnectedHandler = disconnectedHandler;
     };
@@ -114,10 +122,7 @@ const EditorPage = () => {
           Select Language:
           <select
             value={lang}
-            onChange={(e) => {
-              setLang(e.target.value);
-              window.location.reload();
-            }}
+            onChange={(e) => setLang(e.target.value)}
             className="seLang"
           >
             {/* options omitted for brevity, keep as in your original */}
@@ -128,9 +133,7 @@ const EditorPage = () => {
           Select Theme:
           <select
             value={them}
-            onChange={(e) => {
-              setThem(e.target.value);
-            }}
+            onChange={(e) => setThem(e.target.value)}
             className="seLang"
           >
             {/* options omitted for brevity, keep as in your original */}
@@ -149,6 +152,8 @@ const EditorPage = () => {
         <Editor
           socketRef={socketRef}
           roomId={roomId}
+          lang={lang}
+          theme={them}
           onCodeChange={(code) => {
             console.log("on code change" + code);
             codeRef.current = code;
