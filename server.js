@@ -50,6 +50,27 @@ app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Lightweight CORS for API routes (matches socket origins)
+app.use('/api', (req, res, next) => {
+  const reqOrigin = req.headers.origin;
+  let allow = false;
+  if (!process.env.CLIENT_ORIGIN) {
+    allow = true; // dev: allow any
+  } else if (reqOrigin && allowedOrigins.includes(reqOrigin)) {
+    allow = true;
+  }
+  if (allow) {
+    res.header('Access-Control-Allow-Origin', reqOrigin || '*');
+    res.header('Vary', 'Origin');
+  }
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 // Execute code (C/C++) via Piston public API
 app.use(express.json({ limit: '200kb' }));
 app.post('/api/run', async (req, res) => {
@@ -65,12 +86,18 @@ app.post('/api/run', async (req, res) => {
     else if (language === 'c' || language === 'text/x-csrc') pistonLang = 'c';
     else return res.status(400).json({ error: 'Unsupported language' });
 
-    const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+    // Use global fetch if present; else fallback to node-fetch dynamically
+    let fetchFn = globalThis.fetch;
+    if (!fetchFn) {
+      const mod = await import('node-fetch');
+      fetchFn = mod.default || mod;
+    }
+
+    const response = await fetchFn('https://emkc.org/api/v2/piston/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         language: pistonLang,
-        // Let Piston pick default version
         files: [{ name: pistonLang === 'cpp' ? 'main.cpp' : 'main.c', content: code }],
       }),
     });
@@ -80,7 +107,6 @@ app.post('/api/run', async (req, res) => {
       return res.status(502).json({ error: 'Execution service failed', detail: text });
     }
     const data = await response.json();
-    // Piston returns { run: { stdout, stderr, code } ... }
     const stdout = data?.run?.stdout || '';
     const stderr = data?.run?.stderr || '';
     const exitCode = data?.run?.code;
