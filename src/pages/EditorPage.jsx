@@ -345,7 +345,7 @@ def __exec_and_capture(source):
               <button 
                 className="btn runBtn" 
                 onClick={executeCode}
-                disabled={isRunning}
+                disabled={isRunning || (lang === "python" && pyodideLoading)}
               >
                 {isRunning ? "Running..." : "▶ Run Code"}
               </button>
