@@ -33,6 +33,29 @@ const EditorPage = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
+  const pyodideRef = useRef(null);
+  const [pyodideLoading, setPyodideLoading] = useState(false);
+
+  async function ensurePyodide() {
+    if (pyodideRef.current) return pyodideRef.current;
+    setPyodideLoading(true);
+    try {
+      if (typeof window.loadPyodide !== 'function') {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const pyodide = await window.loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/' });
+      pyodideRef.current = pyodide;
+      return pyodide;
+    } finally {
+      setPyodideLoading(false);
+    }
+  }
 
   const location = useLocation();
   const { roomId } = useParams();
@@ -157,8 +180,29 @@ const EditorPage = () => {
           break;
           
         case "python":
-          // For Python, we'd need a backend service or WASM
-          result = "Python execution requires backend service (not implemented yet)";
+          // Run Python via Pyodide (WASM in-browser)
+          const pyodide = await ensurePyodide();
+          await pyodide.runPythonAsync(`
+import sys, io, json, traceback
+def __exec_and_capture(source):
+    stdout, stderr = io.StringIO(), io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = stdout, stderr
+    try:
+        exec(source, {})
+    except Exception:
+        traceback.print_exc()
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+    return json.dumps({"out": stdout.getvalue(), "err": stderr.getvalue()})
+          `);
+          const pyResultJson = await pyodide.runPythonAsync(`__exec_and_capture(${JSON.stringify(codeRef.current)})`);
+          try {
+            const parsed = JSON.parse(pyResultJson);
+            result = parsed.out || (parsed.err ? `Error: ${parsed.err}` : "");
+          } catch (_) {
+            result = String(pyResultJson);
+          }
           break;
           
         case "text/x-java":
@@ -297,7 +341,7 @@ const EditorPage = () => {
               </button>
               <span className="executionInfo">
                 {lang === "javascript" ? "JavaScript (Browser)" : 
-                 lang === "python" ? "Python (Backend needed)" :
+                 lang === "python" ? (pyodideLoading ? "Python (Loading runtime...)" : "Python (Pyodide)") :
                  lang === "text/x-java" ? "Java (Compilation needed)" :
                  lang === "text/x-c++src" ? "C++ (Compilation needed)" :
                  "Text Mode"}
