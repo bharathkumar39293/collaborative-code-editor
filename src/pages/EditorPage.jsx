@@ -101,7 +101,7 @@ const EditorPage = () => {
   // Insert standard template code when language changes
   useEffect(() => {
     const template = LANGUAGE_TEMPLATES[lang];
-    if (!template) return;
+    if (template === undefined || template === null) return;
 
     codeRef.current = template;
     setExternalCode(template);
