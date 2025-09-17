@@ -58,6 +58,23 @@ const EditorPage = () => {
     }
   }
 
+  const resolveApiBase = () => {
+    // Prefer explicit env if provided
+    const envUrl = import.meta?.env?.VITE_SOCKET_SERVER_URL;
+    if (envUrl && typeof envUrl === 'string' && envUrl.trim()) return envUrl.trim();
+    if (typeof window !== 'undefined') {
+      const { origin, hostname, port } = window.location;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // If running vite on 5173, API lives on 5000
+        if (port === '5173') return 'http://localhost:5000';
+        // Otherwise assume same-origin
+        return origin;
+      }
+      return origin;
+    }
+    return '';
+  };
+
   const location = useLocation();
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -237,14 +254,19 @@ def __exec_and_capture(source):
         case "text/x-c++src":
           // Execute via server-run endpoint (Piston)
           try {
-            const resp = await fetch('/api/run', {
+            const apiBase = resolveApiBase();
+            const resp = await fetch(`${apiBase}/api/run`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ language: 'text/x-c++src', code: codeRef.current }),
             });
-            const json = await resp.json();
-            if (!resp.ok) throw new Error(json?.error || 'Run failed');
-            result = (json.stderr ? `Error: ${json.stderr}\n` : '') + (json.stdout || '');
+            const raw = await resp.text();
+            let json;
+            try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
+            if (!resp.ok) throw new Error((json && json.error) || raw || 'Run failed');
+            const stdout = json?.stdout || '';
+            const stderr = json?.stderr || '';
+            result = (stderr ? `Error: ${stderr}\n` : '') + (stdout || '');
           } catch (e) {
             result = `Error: ${e.message}`;
           }
