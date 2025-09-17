@@ -65,11 +65,48 @@ const Home = () => {
                     <button className="btn joinBtn" onClick={joinRoom}>
                         Join
                     </button>
+                    <div className="shareActions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                        <button
+                            className="btn copyBtn"
+                            onClick={async () => {
+                                if (!roomId) {
+                                    toast.error('Create or paste a ROOM ID first');
+                                    return;
+                                }
+                                try {
+                                    await navigator.clipboard.writeText(roomId);
+                                    toast.success('Room ID copied');
+                                } catch (e) {
+                                    toast.error('Failed to copy');
+                                }
+                            }}
+                        >
+                            Copy Room ID
+                        </button>
+                        <button
+                            className="btn copyBtn"
+                            onClick={async () => {
+                                if (!roomId) {
+                                    toast.error('Create or paste a ROOM ID first');
+                                    return;
+                                }
+                                try {
+                                    const link = `${window.location.origin}/editor/${roomId}`;
+                                    await navigator.clipboard.writeText(link);
+                                    toast.success('Invite link copied');
+                                } catch (e) {
+                                    toast.error('Failed to copy');
+                                }
+                            }}
+                        >
+                            Copy Invite Link
+                        </button>
+                    </div>
                     <span className="createInfo">
                         If you don't have an invite then create &nbsp;
                         <Link
+                            to="#"
                             onClick={createNewRoom}
-                            href=""
                             className="createNewBtn"
                         >
                             new room
@@ -80,7 +117,7 @@ const Home = () => {
             <footer>
                 <h4>
                     Build by &nbsp;
-                    <Link href="https://github.com/Mohitur669" target="_blank" rel="noopener noreferrer">Mohd Mohitur Rahaman</Link>
+                    <a href="https://github.com/Mohitur669" target="_blank" rel="noopener noreferrer">Mohd Mohitur Rahaman</a>
                 </h4>
             </footer>
         </div>

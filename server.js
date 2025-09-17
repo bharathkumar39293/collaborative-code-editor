@@ -5,22 +5,43 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { Server } from 'socket.io';
 import ACTIONS from './src/actions/Actions.js';
+import helmet from 'helmet';
+import compression from 'compression';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
+
+// Accept comma-separated allowed origins via env; default to localhost:5173 for dev
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
 const io = new Server(server, {
   cors: {
-    origin: "https://collaborative-code-editor-server-t79n.onrender.com/",
-    methods: ["GET", "POST"],
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
   },
 });
 
-app.use(express.static('build'));
+// Security and performance middleware
+app.use(helmet({
+  contentSecurityPolicy: false,
+}));
+app.use(compression());
+
+// Healthcheck for uptime monitors and container orchestrators
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Serve Vite build output from dist
+const DIST_DIR = path.join(__dirname, 'dist');
+app.use(express.static(DIST_DIR));
 app.use((req, res, next) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  res.sendFile(path.join(DIST_DIR, 'index.html'));
 });
 
 const userSocketMap = {};
