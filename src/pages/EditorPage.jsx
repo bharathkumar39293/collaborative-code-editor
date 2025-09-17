@@ -197,7 +197,10 @@ const EditorPage = () => {
           
         case "python":
           // Run Python via Pyodide (WASM in-browser)
+          console.log("Starting Python execution...");
           const pyodide = await ensurePyodide();
+          console.log("Pyodide loaded, setting up capture...");
+          
           await pyodide.runPythonAsync(`
 import sys, io, json, traceback
 def __exec_and_capture(source):
@@ -212,11 +215,17 @@ def __exec_and_capture(source):
         sys.stdout, sys.stderr = old_out, old_err
     return json.dumps({"out": stdout.getvalue(), "err": stderr.getvalue()})
           `);
+          
+          console.log("Executing Python code:", codeRef.current);
           const pyResultJson = await pyodide.runPythonAsync(`__exec_and_capture(${JSON.stringify(codeRef.current)})`);
+          console.log("Python execution result:", pyResultJson);
+          
           try {
             const parsed = JSON.parse(pyResultJson);
             result = parsed.out || (parsed.err ? `Error: ${parsed.err}` : "");
-          } catch (_) {
+            console.log("Parsed result:", result);
+          } catch (e) {
+            console.error("Failed to parse Python result:", e);
             result = String(pyResultJson);
           }
           break;
