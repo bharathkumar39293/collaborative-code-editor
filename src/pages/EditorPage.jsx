@@ -15,6 +15,12 @@ import {
 } from "react-router-dom";
 
 const EditorPage = () => {
+  const LANGUAGE_TEMPLATES = {
+    javascript: `// JavaScript template\nfunction main() {\n  console.log('Hello from JavaScript');\n}\n\nmain();\n`,
+    python: `# Python template\ndef main():\n    print('Hello from Python')\n\nif __name__ == '__main__':\n    main()\n`,
+    'text/x-java': `// Java template\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java");\n    }\n}\n`,
+    'text/x-c++src': `// C++ template\n#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    cout << "Hello from C++" << endl;\n    return 0;\n}\n`,
+  };
   const [lang, setLang] = useRecoilState(language);
   const [theme, setTheme] = useRecoilState(cmtheme);
 
@@ -90,6 +96,18 @@ const EditorPage = () => {
       }
     };
   }, [location.state, navigate, roomId]);
+
+  // Insert standard template code when language changes
+  useEffect(() => {
+    const template = LANGUAGE_TEMPLATES[lang];
+    if (!template) return;
+
+    codeRef.current = template;
+    setExternalCode(template);
+    if (socketRef.current) {
+      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code: template });
+    }
+  }, [lang]);
 
   // Callback when user types code locally
   function onCodeChangeHandler(code) {
