@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
+import Header from "../components/Header";
 import { language, cmtheme } from "../atoms";
 import { useRecoilState } from "recoil";
 import ACTIONS from "../actions/Actions";
@@ -122,8 +123,15 @@ const EditorPage = () => {
   }
 
   return (
-    <div className="mainWrap">
-      <div className="aside">
+    <div className="pageWrap">
+      <Header
+        roomId={roomId}
+        connected={!!socketRef.current}
+        onCopyRoomId={copyRoomId}
+        onCopyInviteLink={copyInviteLink}
+      />
+      <div className="mainWrap">
+        <div className="aside">
         <div className="asideInner">
           <h3>Connected</h3>
           <div className="clientsList">
@@ -178,17 +186,18 @@ const EditorPage = () => {
             <option value="midnight">Midnight</option>
           </select>
         </label>
-      </div>
+        </div>
 
-      <div className="editorWrap">
-        <Editor
-          socketRef={socketRef}
-          roomId={roomId}
-          lang={lang}
-          theme={theme}
-          onCodeChange={onCodeChangeHandler}
-          externalCode={externalCode}
-        />
+        <div className="editorWrap">
+          <Editor
+            socketRef={socketRef}
+            roomId={roomId}
+            lang={lang}
+            theme={theme}
+            onCodeChange={onCodeChangeHandler}
+            externalCode={externalCode}
+          />
+        </div>
       </div>
     </div>
   );

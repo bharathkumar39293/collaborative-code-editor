@@ -18,6 +18,41 @@ body {
     font-weight: 500;
 }
 
+.pageWrap {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.appHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 16px;
+    background: linear-gradient(180deg, #0f1117 0%, #141824 100%);
+    color: #e4e7ee;
+    border-bottom: 1px solid #23273a;
+}
+
+.appHeader__left { display: flex; align-items: center; gap: 12px; }
+.appHeader__right { display: flex; align-items: center; gap: 8px; }
+
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.brand__dot { width: 10px; height: 10px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 12px rgba(34,197,94,.7); }
+.brand__name { letter-spacing: .2px; }
+
+.connBadge { font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid #2a3041; }
+.connBadge.ok { background: rgba(34,197,94,.12); color: #7ee787; border-color: rgba(34,197,94,.24); }
+.connBadge.down { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.24); }
+
+.ghostBtn { background: transparent; color: #aab1c6; border: 1px solid #2a3041; }
+.primaryBtn { background: #3b82f6; color: #fff; }
+.dangerBtn { background: #ef4444; color: #fff; }
+.ghostBtn:hover { background: #1a2030; }
+.primaryBtn:hover { background: #2563eb; }
+.dangerBtn:hover { background: #dc2626; }
+
 .homePageWrapper {
     display: flex;
     align-items: center;
@@ -135,20 +170,20 @@ footer a:hover {
 
 .mainWrap {
     display: grid;
-    grid-template-columns: 180px 1fr;
-    height: 100vh;
+    grid-template-columns: 200px 1fr;
+    height: calc(100vh - 56px);
 }
 
 @media screen and (min-width: 480px) {
     .mainWrap {
         display: grid;
-        grid-template-columns: 230px 1fr;
-        height: 100vh;
+        grid-template-columns: 260px 1fr;
+        height: calc(100vh - 56px);
     }
 }
 
 .aside {
-    background: #1c1e29;
+    background: #0f1220;
     padding: 16px;
     color: #fff;
     display: flex;
@@ -206,7 +241,7 @@ footer a:hover {
 .CodeMirror {
     font-family: 'Cascadia Code', sans-serif !important;
     min-height: calc(100vh - 20px);
-    width: calc(100vw - 180px);
+    width: calc(100vw - 200px);
     font-size: 16px;
     line-height: 1.6;
     padding-top: 20px;
@@ -215,7 +250,7 @@ footer a:hover {
 @media screen and (min-width: 480px) {
     .CodeMirror {
         min-height: calc(100vh - 20px);
-        width: calc(100vw - 230px);
+        width: calc(100vw - 260px);
         font-size: 16px;
         line-height: 1.6;
         padding-top: 20px;
