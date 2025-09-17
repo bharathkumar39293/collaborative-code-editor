@@ -67,7 +67,16 @@ const EditorPage = () => {
         if (username !== location.state.username) {
           toast.success(`${username} joined the room.`);
         }
-        setClients(clients);
+        // Deduplicate by username to avoid showing the same person twice
+        const uniqueByUsername = Array.from(
+          clients.reduce((map, c) => {
+            if (!map.has(c.username)) {
+              map.set(c.username, c);
+            }
+            return map;
+          }, new Map()).values()
+        );
+        setClients(uniqueByUsername);
 
         // Sync current code to the new client
         socketRef.current.emit(ACTIONS.SYNC_CODE, {
@@ -78,7 +87,7 @@ const EditorPage = () => {
 
       socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
         toast.success(`${username} left the room.`);
-        setClients((prev) => prev.filter((client) => client.socketId !== socketId));
+        setClients((prev) => prev.filter((client) => client.username !== username));
       });
 
       // Handle incoming code changes and update editor content
