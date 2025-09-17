@@ -21,7 +21,20 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    // Allow dynamic origin during development if CLIENT_ORIGIN is not provided
+    origin: (origin, callback) => {
+      // No origin (e.g., mobile apps, curl) -> allow
+      if (!origin) return callback(null, true);
+
+      // If explicit list provided, enforce it
+      if (process.env.CLIENT_ORIGIN) {
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+      }
+
+      // No env set -> allow the requesting origin (useful for Vite dev and same-origin prod)
+      return callback(null, true);
+    },
     methods: ['GET', 'POST'],
   },
 });
