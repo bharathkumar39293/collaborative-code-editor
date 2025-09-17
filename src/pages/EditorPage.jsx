@@ -30,6 +30,9 @@ const EditorPage = () => {
   const codeRef = useRef(""); // Hold current code state
   const [externalCode, setExternalCode] = useState(""); // Trigger re-render on remote updates
   const initializedRef = useRef(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [output, setOutput] = useState("");
+  const [error, setError] = useState("");
 
   const location = useLocation();
   const { roomId } = useParams();
@@ -126,6 +129,63 @@ const EditorPage = () => {
       socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
     }
   }
+
+  // Execute code based on selected language
+  const executeCode = async () => {
+    if (!codeRef.current.trim()) {
+      toast.error("No code to execute");
+      return;
+    }
+
+    setIsRunning(true);
+    setOutput("");
+    setError("");
+
+    try {
+      let result = "";
+      
+      switch (lang) {
+        case "javascript":
+          // Use Function constructor for safer execution
+          const func = new Function(codeRef.current);
+          const originalConsole = console.log;
+          const logs = [];
+          console.log = (...args) => logs.push(args.join(" "));
+          func();
+          console.log = originalConsole;
+          result = logs.join("\n");
+          break;
+          
+        case "python":
+          // For Python, we'd need a backend service or WASM
+          result = "Python execution requires backend service (not implemented yet)";
+          break;
+          
+        case "text/x-java":
+          result = "Java execution requires compilation service (not implemented yet)";
+          break;
+          
+        case "text/x-c++src":
+          result = "C++ execution requires compilation service (not implemented yet)";
+          break;
+          
+        case "text/plain":
+          result = "Plain text - no execution needed";
+          break;
+          
+        default:
+          result = "Language not supported for execution";
+      }
+      
+      setOutput(result);
+      toast.success("Code executed successfully");
+    } catch (err) {
+      setError(err.message);
+      toast.error("Execution failed");
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   async function copyRoomId() {
     try {
@@ -226,6 +286,32 @@ const EditorPage = () => {
             onCodeChange={onCodeChangeHandler}
             externalCode={externalCode}
           />
+          <div className="executionPanel">
+            <div className="executionControls">
+              <button 
+                className="btn runBtn" 
+                onClick={executeCode}
+                disabled={isRunning}
+              >
+                {isRunning ? "Running..." : "▶ Run Code"}
+              </button>
+              <span className="executionInfo">
+                {lang === "javascript" ? "JavaScript (Browser)" : 
+                 lang === "python" ? "Python (Backend needed)" :
+                 lang === "text/x-java" ? "Java (Compilation needed)" :
+                 lang === "text/x-c++src" ? "C++ (Compilation needed)" :
+                 "Text Mode"}
+              </span>
+            </div>
+            {(output || error) && (
+              <div className="outputPanel">
+                <div className="outputHeader">Output:</div>
+                <pre className="outputContent">
+                  {error ? `Error: ${error}` : output || "No output"}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

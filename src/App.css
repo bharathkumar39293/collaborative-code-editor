@@ -264,3 +264,75 @@ footer a:hover {
   align-items: center;
   height: 100vh; /* Full viewport height */
 }
+
+/* Execution Panel Styles */
+.executionPanel {
+  background: #1a1d29;
+  border-top: 1px solid #2a3041;
+  padding: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.executionControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.runBtn {
+  background: #22c55e;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.runBtn:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
+.runBtn:disabled {
+  background: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.executionInfo {
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.outputPanel {
+  background: #0f1220;
+  border: 1px solid #2a3041;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.outputHeader {
+  background: #1a1d29;
+  color: #e5e7eb;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #2a3041;
+}
+
+.outputContent {
+  color: #e5e7eb;
+  padding: 12px;
+  margin: 0;
+  font-family: 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
