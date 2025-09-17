@@ -144,6 +144,14 @@ const EditorPage = () => {
     if (socketRef.current) {
       socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code: template });
     }
+
+    // Preload Pyodide when Python is selected to avoid delay on first run
+    if (lang === 'python' && !pyodideRef.current) {
+      ensurePyodide().catch((e) => {
+        console.error('Pyodide preload failed', e);
+        toast.error('Failed to load Python runtime');
+      });
+    }
   }, [lang]);
 
   // Callback when user types code locally
