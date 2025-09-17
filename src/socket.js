@@ -28,7 +28,8 @@ export const initSocket = async () => {
     forceNew: true,
     reconnectionAttempts: Infinity,
     timeout: 10000,
-    transports: ['websocket'],
+    // Allow fallback to polling when native WS is restricted
+    transports: ['websocket', 'polling'],
   };
   const baseUrl = resolveBaseUrl();
   return io(baseUrl, options);
