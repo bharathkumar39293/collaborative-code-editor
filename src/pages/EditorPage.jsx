@@ -33,6 +33,7 @@ const EditorPage = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
+  const [hasRun, setHasRun] = useState(false);
   const pyodideRef = useRef(null);
   const [pyodideLoading, setPyodideLoading] = useState(false);
 
@@ -169,14 +170,21 @@ const EditorPage = () => {
       
       switch (lang) {
         case "javascript":
-          // Use Function constructor for safer execution
+          // Use Function constructor for safer execution and capture logs/errors
           const func = new Function(codeRef.current);
-          const originalConsole = console.log;
           const logs = [];
-          console.log = (...args) => logs.push(args.join(" "));
-          func();
-          console.log = originalConsole;
-          result = logs.join("\n");
+          const errs = [];
+          const originalLog = console.log;
+          const originalErr = console.error;
+          try {
+            console.log = (...args) => logs.push(args.map(String).join(" "));
+            console.error = (...args) => errs.push(args.map(String).join(" "));
+            func();
+          } finally {
+            console.log = originalLog;
+            console.error = originalErr;
+          }
+          result = (errs.length ? `Error: ${errs.join("\n")}\n` : "") + (logs.join("\n"));
           break;
           
         case "python":
@@ -221,10 +229,12 @@ def __exec_and_capture(source):
           result = "Language not supported for execution";
       }
       
-      setOutput(result);
+      setOutput(result || "");
+      setHasRun(true);
       toast.success("Code executed successfully");
     } catch (err) {
       setError(err.message);
+      setHasRun(true);
       toast.error("Execution failed");
     } finally {
       setIsRunning(false);
@@ -347,7 +357,7 @@ def __exec_and_capture(source):
                  "Text Mode"}
               </span>
             </div>
-            {(output || error) && (
+            {hasRun && (
               <div className="outputPanel">
                 <div className="outputHeader">Output:</div>
                 <pre className="outputContent">
