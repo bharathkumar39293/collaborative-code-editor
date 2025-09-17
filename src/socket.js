@@ -5,8 +5,8 @@ export const initSocket = async () => {
     forceNew: true,
     reconnectionAttempts: Infinity,
     timeout: 10000,
-    transports: ['websocket'],  // Use only websocket transport
+    transports: ['websocket'],
   };
-  // Use secure WebSocket protocol for HTTPS backend
-  return io("wss://collaborative-code-editor-server-t79n.onrender.com/", options);
+  const baseUrl = import.meta?.env?.VITE_SOCKET_SERVER_URL || 'http://localhost:5000';
+  return io(baseUrl, options);
 };

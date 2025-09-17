@@ -20,12 +20,19 @@ const EditorPage = () => {
   const [clients, setClients] = useState([]);
   const socketRef = useRef(null);
   const codeRef = useRef(""); // Hold current code state
+  const [externalCode, setExternalCode] = useState(""); // Trigger re-render on remote updates
+  const initializedRef = useRef(false);
 
   const location = useLocation();
   const { roomId } = useParams();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+
     const init = async () => {
       socketRef.current = await initSocket();
 
@@ -69,9 +76,8 @@ const EditorPage = () => {
       // Handle incoming code changes and update editor content
       socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
         if (code !== null && code !== codeRef.current) {
-          codeRef.current = code; // Update ref to avoid loops
-          // You will pass this code to Editor component below to update its content
-          // Using a state or props mechanism to sync might be needed if Editor supports it
+          codeRef.current = code;
+          setExternalCode(code);
         }
       });
     };
@@ -92,6 +98,25 @@ const EditorPage = () => {
     }
   }
 
+  async function copyRoomId() {
+    try {
+      await navigator.clipboard.writeText(roomId);
+      toast.success("Room ID copied");
+    } catch (e) {
+      toast.error("Failed to copy Room ID");
+    }
+  }
+
+  async function copyInviteLink() {
+    try {
+      const link = `${window.location.origin}/editor/${roomId}`;
+      await navigator.clipboard.writeText(link);
+      toast.success("Invite link copied");
+    } catch (e) {
+      toast.error("Failed to copy link");
+    }
+  }
+
   if (!location.state) {
     return <Navigate to="/" />;
   }
@@ -106,6 +131,14 @@ const EditorPage = () => {
               <Client key={client.socketId} username={client.username} />
             ))}
           </div>
+          <div className="actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+            <button className="btn copyBtn" onClick={copyRoomId}>
+              Copy Room ID
+            </button>
+            <button className="btn copyBtn" onClick={copyInviteLink}>
+              Copy Invite Link
+            </button>
+          </div>
         </div>
 
         <label>
@@ -115,7 +148,10 @@ const EditorPage = () => {
             onChange={(e) => setLang(e.target.value)}
             className="seLang"
           >
-            {/* language options */}
+            <option value="javascript">JavaScript</option>
+            <option value="python">Python</option>
+            <option value="text/x-java">Java</option>
+            <option value="text/x-c++src">C/C++</option>
           </select>
         </label>
 
@@ -126,7 +162,20 @@ const EditorPage = () => {
             onChange={(e) => setTheme(e.target.value)}
             className="seLang"
           >
-            {/* theme options */}
+            <option value="monokai">Monokai</option>
+            <option value="material">Material</option>
+            <option value="material-darker">Material Darker</option>
+            <option value="material-palenight">Material Palenight</option>
+            <option value="dracula">Dracula</option>
+            <option value="twilight">Twilight</option>
+            <option value="cobalt">Cobalt</option>
+            <option value="eclipse">Eclipse</option>
+            <option value="blackboard">Blackboard</option>
+            <option value="neo">Neo</option>
+            <option value="nord">Nord</option>
+            <option value="seti">Seti</option>
+            <option value="rubyblue">Ruby Blue</option>
+            <option value="midnight">Midnight</option>
           </select>
         </label>
       </div>
@@ -138,7 +187,7 @@ const EditorPage = () => {
           lang={lang}
           theme={theme}
           onCodeChange={onCodeChangeHandler}
-          externalCode={codeRef.current} // You might need to add logic in Editor to accept this prop and update content accordingly
+          externalCode={externalCode}
         />
       </div>
     </div>
