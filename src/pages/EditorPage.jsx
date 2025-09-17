@@ -235,7 +235,19 @@ def __exec_and_capture(source):
           break;
           
         case "text/x-c++src":
-          result = "C++ execution requires compilation service (not implemented yet)";
+          // Execute via server-run endpoint (Piston)
+          try {
+            const resp = await fetch('/api/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ language: 'text/x-c++src', code: codeRef.current }),
+            });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json?.error || 'Run failed');
+            result = (json.stderr ? `Error: ${json.stderr}\n` : '') + (json.stdout || '');
+          } catch (e) {
+            result = `Error: ${e.message}`;
+          }
           break;
           
         case "text/plain":

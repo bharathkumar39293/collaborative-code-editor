@@ -50,6 +50,47 @@ app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Execute code (C/C++) via Piston public API
+app.use(express.json({ limit: '200kb' }));
+app.post('/api/run', async (req, res) => {
+  try {
+    const { language, code } = req.body || {};
+    if (!language || !code) {
+      return res.status(400).json({ error: 'language and code are required' });
+    }
+
+    // Map our frontend mode names to Piston language identifiers
+    let pistonLang;
+    if (language === 'text/x-c++src') pistonLang = 'cpp';
+    else if (language === 'c' || language === 'text/x-csrc') pistonLang = 'c';
+    else return res.status(400).json({ error: 'Unsupported language' });
+
+    const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: pistonLang,
+        // Let Piston pick default version
+        files: [{ name: pistonLang === 'cpp' ? 'main.cpp' : 'main.c', content: code }],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(502).json({ error: 'Execution service failed', detail: text });
+    }
+    const data = await response.json();
+    // Piston returns { run: { stdout, stderr, code } ... }
+    const stdout = data?.run?.stdout || '';
+    const stderr = data?.run?.stderr || '';
+    const exitCode = data?.run?.code;
+    res.json({ stdout, stderr, exitCode });
+  } catch (e) {
+    console.error('Run API error:', e);
+    res.status(500).json({ error: 'Server error', detail: String(e?.message || e) });
+  }
+});
+
 // Serve Vite build output from dist
 const DIST_DIR = path.join(__dirname, 'dist');
 app.use(express.static(DIST_DIR));
