@@ -208,7 +208,7 @@ def __exec_and_capture(source):
     old_out, old_err = sys.stdout, sys.stderr
     sys.stdout, sys.stderr = stdout, stderr
     try:
-        exec(source, {})
+        exec(source, {"__name__": "__main__"})
     except Exception:
         traceback.print_exc()
     finally:
