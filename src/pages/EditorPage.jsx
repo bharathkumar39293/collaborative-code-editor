@@ -248,25 +248,71 @@ def __exec_and_capture(source):
           break;
           
         case "text/x-java":
-          result = "Java execution requires compilation service (not implemented yet)";
-          break;
-          
-        case "text/x-c++src":
-          // Execute via server-run endpoint (Piston)
+          // Execute via server-run endpoint (multiple services)
           try {
             const apiBase = resolveApiBase();
             const resp = await fetch(`${apiBase}/api/run`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ language: 'text/x-c++src', code: codeRef.current }),
+              body: JSON.stringify({ language: lang, code: codeRef.current }),
             });
             const raw = await resp.text();
             let json;
             try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
-            if (!resp.ok) throw new Error((json && json.error) || raw || 'Run failed');
+            if (!resp.ok) {
+              const errorMsg = json?.error || raw || 'Execution failed';
+              const detail = json?.detail ? `\nDetails: ${json.detail}` : '';
+              const suggestion = json?.suggestion ? `\nSuggestion: ${json.suggestion}` : '';
+              throw new Error(`${errorMsg}${detail}${suggestion}`);
+            }
             const stdout = json?.stdout || '';
             const stderr = json?.stderr || '';
-            result = (stderr ? `Error: ${stderr}\n` : '') + (stdout || '');
+            const exitCode = json?.exitCode;
+            
+            // Format output with exit code if non-zero
+            let output = '';
+            if (stderr) output += `Error: ${stderr}\n`;
+            if (stdout) output += stdout;
+            if (exitCode && exitCode !== 0 && !stderr) {
+              output += `\nProgram exited with code ${exitCode}`;
+            }
+            result = output || 'No output';
+          } catch (e) {
+            result = `Error: ${e.message}`;
+          }
+          break;
+          
+        case "text/x-c++src":
+        case "text/x-csrc":
+          // Execute via server-run endpoint (multiple services)
+          try {
+            const apiBase = resolveApiBase();
+            const resp = await fetch(`${apiBase}/api/run`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ language: lang, code: codeRef.current }),
+            });
+            const raw = await resp.text();
+            let json;
+            try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
+            if (!resp.ok) {
+              const errorMsg = json?.error || raw || 'Execution failed';
+              const detail = json?.detail ? `\nDetails: ${json.detail}` : '';
+              const suggestion = json?.suggestion ? `\nSuggestion: ${json.suggestion}` : '';
+              throw new Error(`${errorMsg}${detail}${suggestion}`);
+            }
+            const stdout = json?.stdout || '';
+            const stderr = json?.stderr || '';
+            const exitCode = json?.exitCode;
+            
+            // Format output with exit code if non-zero
+            let output = '';
+            if (stderr) output += `Error: ${stderr}\n`;
+            if (stdout) output += stdout;
+            if (exitCode && exitCode !== 0 && !stderr) {
+              output += `\nProgram exited with code ${exitCode}`;
+            }
+            result = output || 'No output';
           } catch (e) {
             result = `Error: ${e.message}`;
           }
@@ -403,8 +449,9 @@ def __exec_and_capture(source):
               <span className="executionInfo">
                 {lang === "javascript" ? "JavaScript (Browser)" : 
                  lang === "python" ? (pyodideLoading ? "Python (Loading runtime...)" : "Python (Pyodide)") :
-                 lang === "text/x-java" ? "Java (Compilation needed)" :
-                 lang === "text/x-c++src" ? "C++ (Compilation needed)" :
+                 lang === "text/x-java" ? "Java (Remote Compilation)" :
+                 lang === "text/x-c++src" ? "C++ (Local/Remote Compilation)" :
+                 lang === "text/x-csrc" ? "C (Local/Remote Compilation)" :
                  "Text Mode"}
               </span>
             </div>
