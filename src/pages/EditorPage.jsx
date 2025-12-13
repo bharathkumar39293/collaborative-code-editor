@@ -111,27 +111,31 @@ const EditorPage = () => {
         if (username !== location.state.username) {
           toast.success(`${username} joined the room.`);
         }
-        // Deduplicate by username to avoid showing the same person twice
-        const uniqueByUsername = Array.from(
+        // Deduplicate by socketId to avoid showing the same person twice
+        const uniqueBySocketId = Array.from(
           clients.reduce((map, c) => {
-            if (!map.has(c.username)) {
-              map.set(c.username, c);
+            if (!map.has(c.socketId)) {
+              map.set(c.socketId, c);
             }
             return map;
           }, new Map()).values()
         );
-        setClients(uniqueByUsername);
+        setClients(uniqueBySocketId);
 
-        // Sync current code to the new client
-        socketRef.current.emit(ACTIONS.SYNC_CODE, {
-          code: codeRef.current,
-          socketId,
-        });
+        // If this is a new user joining (not us), request code sync from them
+        // If we are the new user, we'll receive code from existing users via their SYNC_CODE
+        if (socketId !== socketRef.current.id && codeRef.current) {
+          // We have code, send it to the new user
+          socketRef.current.emit(ACTIONS.SYNC_CODE, {
+            code: codeRef.current,
+            socketId,
+          });
+        }
       });
 
       socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
         toast.success(`${username} left the room.`);
-        setClients((prev) => prev.filter((client) => client.username !== username));
+        setClients((prev) => prev.filter((client) => client.socketId !== socketId));
       });
 
       // Handle incoming code changes and update editor content
@@ -158,7 +162,7 @@ const EditorPage = () => {
 
     codeRef.current = template;
     setExternalCode(template);
-    if (socketRef.current) {
+    if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code: template });
     }
 
@@ -174,7 +178,7 @@ const EditorPage = () => {
   // Callback when user types code locally
   function onCodeChangeHandler(code) {
     codeRef.current = code;
-    if (socketRef.current) {
+    if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
     }
   }
@@ -365,67 +369,72 @@ def __exec_and_capture(source):
     <div className="pageWrap">
       <Header
         roomId={roomId}
-        connected={!!socketRef.current}
+        connected={socketRef.current?.connected ?? false}
         onCopyRoomId={copyRoomId}
         onCopyInviteLink={copyInviteLink}
       />
       <div className="mainWrap">
         <div className="aside">
-        <div className="asideInner">
-          <h3>Connected</h3>
-          <div className="clientsList">
-            {clients.map((client) => (
-              <Client key={client.socketId} username={client.username} />
-            ))}
-          </div>
-          <div className="actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-            <button className="btn copyBtn" onClick={copyRoomId}>
-              Copy Room ID
-            </button>
-            <button className="btn copyBtn" onClick={copyInviteLink}>
-              Copy Invite Link
-            </button>
-          </div>
-        </div>
+          <div className="asideTop">
+            <label>
+              Select Language:
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+                className="seLang"
+              >
+                <option value="text/plain">Text</option>
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="text/x-java">Java</option>
+                <option value="text/x-c++src">C/C++</option>
+              </select>
+            </label>
 
-        <label>
-          Select Language:
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value)}
-            className="seLang"
-          >
-            <option value="text/plain">Text</option>
-            <option value="javascript">JavaScript</option>
-            <option value="python">Python</option>
-            <option value="text/x-java">Java</option>
-            <option value="text/x-c++src">C/C++</option>
-          </select>
-        </label>
+            <label>
+              Select Theme:
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                className="seLang"
+              >
+                <option value="monokai">Monokai</option>
+                <option value="material">Material</option>
+                <option value="material-darker">Material Darker</option>
+                <option value="material-palenight">Material Palenight</option>
+                <option value="dracula">Dracula</option>
+                <option value="twilight">Twilight</option>
+                <option value="cobalt">Cobalt</option>
+                <option value="eclipse">Eclipse</option>
+                <option value="blackboard">Blackboard</option>
+                <option value="neo">Neo</option>
+                <option value="nord">Nord</option>
+                <option value="seti">Seti</option>
+                <option value="rubyblue">Ruby Blue</option>
+                <option value="midnight">Midnight</option>
+              </select>
+            </label>
+          </div>
 
-        <label>
-          Select Theme:
-          <select
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            className="seLang"
-          >
-            <option value="monokai">Monokai</option>
-            <option value="material">Material</option>
-            <option value="material-darker">Material Darker</option>
-            <option value="material-palenight">Material Palenight</option>
-            <option value="dracula">Dracula</option>
-            <option value="twilight">Twilight</option>
-            <option value="cobalt">Cobalt</option>
-            <option value="eclipse">Eclipse</option>
-            <option value="blackboard">Blackboard</option>
-            <option value="neo">Neo</option>
-            <option value="nord">Nord</option>
-            <option value="seti">Seti</option>
-            <option value="rubyblue">Ruby Blue</option>
-            <option value="midnight">Midnight</option>
-          </select>
-        </label>
+          <div className="asideInner">
+            <h3>Connected</h3>
+            <div className="clientsList">
+              {clients.map((client) => (
+                <Client key={client.socketId} username={client.username} />
+              ))}
+            </div>
+          </div>
+
+          <div className="asideBottom">
+            <div className="actions">
+              <button className="btn copyBtn" onClick={copyRoomId}>
+                Copy Room ID
+              </button>
+              <button className="btn copyBtn" onClick={copyInviteLink}>
+                Copy Invite Link
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="editorWrap">

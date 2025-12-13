@@ -407,11 +407,41 @@ io.on('connection', (socket) => {
   });
 
   socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
-    socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
+    if (!roomId || typeof code !== 'string') {
+      console.warn(`[WARN] Invalid CODE_CHANGE from ${socket.id}: roomId=${roomId}, code type=${typeof code}`);
+      return;
+    }
+    // Verify socket is in the room before broadcasting
+    if (socket.rooms.has(roomId)) {
+      socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
+    } else {
+      console.warn(`[WARN] Socket ${socket.id} tried to send CODE_CHANGE to room ${roomId} but is not in that room`);
+    }
   });
 
   socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
-    io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+    if (!socketId || typeof code !== 'string') {
+      console.warn(`[WARN] Invalid SYNC_CODE from ${socket.id}: socketId=${socketId}, code type=${typeof code}`);
+      return;
+    }
+    // Security: Only allow syncing to sockets in the same rooms as the sender
+    const senderRooms = Array.from(socket.rooms);
+    const targetSocket = io.sockets.sockets.get(socketId);
+    
+    if (!targetSocket) {
+      console.warn(`[WARN] SYNC_CODE target socket ${socketId} not found`);
+      return;
+    }
+    
+    // Check if target socket is in at least one room with the sender
+    const targetRooms = Array.from(targetSocket.rooms);
+    const commonRooms = senderRooms.filter(room => targetRooms.includes(room) && room !== socket.id);
+    
+    if (commonRooms.length > 0) {
+      io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+    } else {
+      console.warn(`[WARN] Socket ${socket.id} tried to SYNC_CODE to ${socketId} but they share no rooms`);
+    }
   });
 
   socket.on('disconnecting', () => {
