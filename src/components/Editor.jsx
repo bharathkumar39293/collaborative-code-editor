@@ -55,7 +55,7 @@ const Editor = ({ socketRef, roomId, onCodeChange, externalCode }) => {
       // Prevent emitting if we are updating from external code
       if (!isUpdatingFromExternal.current) {
         onCodeChange(code);
-        if (socketRef.current) {
+        if (socketRef.current && socketRef.current.connected) {
           socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
         }
       }

@@ -444,6 +444,7 @@ footer a:hover {
     display: grid;
     grid-template-columns: 200px 1fr;
     height: calc(100vh - 56px);
+    overflow: hidden;
 }
 
 @media screen and (min-width: 480px) {
@@ -456,21 +457,70 @@ footer a:hover {
 
 .aside {
     background: #0f1220;
-    padding: 16px;
+    padding: 12px;
     color: #fff;
     display: flex;
     flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.asideTop {
+    flex-shrink: 0;
+    margin-bottom: 8px;
+}
+
+.asideTop label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #aab1c6;
+}
+
+.asideTop label:last-of-type {
+    margin-bottom: 0;
 }
 
 .asideInner {
-    flex: 1;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    margin: 4px 0;
+}
+
+.asideInner h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #e4e7ee;
 }
 
 .clientsList {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 12px;
+}
+
+.asideBottom {
+    flex-shrink: 0;
+    padding-top: 8px;
+    border-top: 1px solid #2a3041;
+    margin-top: auto;
+}
+
+.asideBottom .actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.asideBottom .copyBtn {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    padding: 6px 10px;
 }
 
 .client {
@@ -497,12 +547,23 @@ footer a:hover {
     border: none;
     width: 100%;
     margin-top: 4px;
-    margin-bottom: 20px;
-    padding: 10px;
+    padding: 6px;
     border-radius: 5px;
-    font-size: 16px;
+    font-size: 12px;
     font-weight: bold;
     text-align-last: center;
+    background: #1a2030;
+    color: #e4e7ee;
+    cursor: pointer;
+}
+
+.seLang:hover {
+    background: #23273a;
+}
+
+.seLang:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
 }
 
 .leaveBtn {
@@ -510,22 +571,31 @@ footer a:hover {
     margin-top: 20px;
 }
 
+.editorWrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
 .CodeMirror {
     font-family: 'Cascadia Code', sans-serif !important;
-    min-height: calc(100vh - 20px);
-    width: calc(100vw - 200px);
+    height: 100%;
+    width: 100%;
     font-size: 16px;
     line-height: 1.6;
-    padding-top: 20px;
+    padding-top: 12px;
+    flex: 1 1 auto;
+    overflow: auto;
 }
 
 @media screen and (min-width: 480px) {
     .CodeMirror {
-        min-height: calc(100vh - 20px);
-        width: calc(100vw - 260px);
+        height: 100%;
+        width: 100%;
         font-size: 16px;
         line-height: 1.6;
-        padding-top: 20px;
+        padding-top: 12px;
     }
 }
 
@@ -541,8 +611,9 @@ footer a:hover {
 .executionPanel {
   background: #1a1d29;
   border-top: 1px solid #2a3041;
-  padding: 16px;
-  max-height: 200px;
+  padding: 12px;
+  flex-shrink: 0;
+  max-height: 180px;
   overflow-y: auto;
 }
 
@@ -550,15 +621,15 @@ footer a:hover {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .runBtn {
   background: #22c55e;
   color: white;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   transition: all 0.2s ease;
 }
@@ -576,7 +647,7 @@ footer a:hover {
 
 .executionInfo {
   color: #9ca3af;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -590,21 +661,21 @@ footer a:hover {
 .outputHeader {
   background: #1a1d29;
   color: #e5e7eb;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 10px;
+  font-size: 11px;
   font-weight: 600;
   border-bottom: 1px solid #2a3041;
 }
 
 .outputContent {
   color: #e5e7eb;
-  padding: 12px;
+  padding: 10px;
   margin: 0;
   font-family: 'Cascadia Code', monospace;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 120px;
+  max-height: 100px;
   overflow-y: auto;
 }
