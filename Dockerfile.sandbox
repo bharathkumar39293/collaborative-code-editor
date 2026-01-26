@@ -1,0 +1,13 @@
+FROM alpine:latest
+
+# Install compilers and runtimes
+RUN apk add --no-cache gcc g++ musl-dev python3 openjdk11-jdk
+
+# Create a non-root user
+RUN adduser -D -g '' sandbox
+
+# Set working directory
+WORKDIR /code
+
+# Switch to non-root user
+USER sandbox

@@ -4,6 +4,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { Server } from 'socket.io';
+import { WebSocketServer } from 'ws';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { setupWSConnection, setPersistence } = require('y-websocket/bin/utils');
+const { LeveldbPersistence } = require('y-leveldb');
+import * as Y from 'yjs';
 import ACTIONS from './src/actions/Actions.js';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -45,6 +51,46 @@ const io = new Server(server, {
     },
     methods: ['GET', 'POST'],
   },
+});
+
+// Yjs WebSocket Server Setup
+const wss = new WebSocketServer({ noServer: true });
+
+// Configure LevelDB Persistence
+const ldb = new LeveldbPersistence('./storage');
+setPersistence({
+  bindState: async (docName, doc) => {
+    const persistedYdoc = await ldb.getYDoc(docName);
+    const persistedStateVector = Y.encodeStateVector(doc);
+    const diff = Y.encodeStateAsUpdate(persistedYdoc, persistedStateVector);
+
+    // Apply the persisted state to the current doc
+    if (diff.byteLength > 0) {
+      Y.applyUpdate(doc, diff);
+    }
+
+    // Store updates
+    doc.on('update', update => {
+      ldb.storeUpdate(docName, update);
+    });
+  },
+  writeState: async (docName, doc) => {
+    // efficient storage is already handled by ldb.storeUpdate in the listener
+  }
+});
+
+wss.on('connection', (ws, req) => {
+  setupWSConnection(ws, req);
+});
+
+
+// Handle upgrade requests
+server.on('upgrade', (request, socket, head) => {
+  if (request.url.startsWith('/yjs')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  }
 });
 
 // Security and performance middleware
@@ -154,74 +200,69 @@ app.post('/api/run', async (req, res) => {
 
     // Try multiple execution services in order of preference
     const executionServices = [];
-    
-    // Only add local execution on Unix-like systems (not Windows)
-    if (process.platform !== 'win32') {
+
+    // Enable "Local" (Docker) execution on all platforms now
+    if (true) {
       executionServices.push({
         name: 'Local',
         url: 'local',
         transformRequest: async (lang, code, fetchFn) => ({ lang, code }),
         transformResponse: async (data, fetchFn) => {
-          // Local execution using system compiler
+          // Local execution using Docker Sandbox
           const { lang, code } = data;
           const tempDir = tmpdir();
-          const filePath = join(tempDir, fileName);
-          const execPath = join(tempDir, `exec_${Date.now()}`);
-          
+          const uniqueId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const hostFilePath = join(tempDir, `${uniqueId}_${fileName}`);
+
           try {
-            // Write code to temporary file
-            await writeFile(filePath, code);
-            
-            // Compile and execute
-            const compiler = lang === 'cpp' ? 'g++' : 'gcc';
-            const compileCmd = `${compiler} -o "${execPath}" "${filePath}" 2>&1`;
-            
-            try {
-              const { stdout: compileOutput, stderr: compileError } = await execAsync(compileCmd);
-              
-              if (compileError) {
-                return {
-                  stdout: '',
-                  stderr: `Compilation Error:\n${compileError}`,
-                  exitCode: 1,
-                };
-              }
-            } catch (compileErr) {
-              // Check if compiler is not installed
-              if (compileErr.message.includes('not found') || compileErr.message.includes('command not found')) {
-                throw new Error(`${compiler} compiler is not installed on this system. Please install ${compiler} to use local execution.`);
-              }
-              throw compileErr;
+            // Write code to temporary file on host
+            await writeFile(hostFilePath, code);
+
+            let compileRunCmd;
+            if (lang === 'java') {
+              compileRunCmd = `javac /code/${fileName} && java -cp /code Main`;
+            } else {
+              const compiler = lang === 'cpp' ? 'g++' : 'gcc';
+              compileRunCmd = `${compiler} -o /code/output /code/${fileName} && /code/output`;
             }
-            
-            // Execute the compiled program
-            const { stdout: runOutput, stderr: runError } = await execAsync(`"${execPath}" 2>&1`);
-            
-            return {
-              stdout: runOutput || '',
-              stderr: runError || '',
-              exitCode: 0,
-            };
-            
-          } catch (error) {
-            return {
-              stdout: '',
-              stderr: `Execution Error: ${error.message}`,
-              exitCode: 1,
-            };
-          } finally {
-            // Clean up temporary files
-            try {
-              await unlink(filePath);
-              await unlink(execPath);
-            } catch (cleanupError) {
-              console.warn('Failed to clean up temp files:', cleanupError.message);
+
+            const containerName = `sandbox_${uniqueId}`;
+            const dockerCmd = `docker run --rm --name ${containerName} --network none --cpus 0.5 --memory 128m -v "${hostFilePath}:/code/${fileName}" code-sandbox sh -c "${compileRunCmd}"`;
+
+            // Execute
+            const { stdout, stderr } = await execAsync(dockerCmd);
+
+            // Cleanup
+            await unlink(hostFilePath).catch(() => { });
+
+            if (stderr && !stdout) {
+              return { stdout: '', stderr: stderr, exitCode: 1 };
             }
+            return { stdout: stdout, stderr: stderr, exitCode: 0 };
+
+          } catch (e) {
+            // Cleanup host file
+            await unlink(hostFilePath).catch(() => { });
+
+            // Check for Docker daemon errors specifically
+            const errorMsg = (e.message || '') + (e.stderr || '');
+            const isDockerError = errorMsg.includes('docker') ||
+              errorMsg.includes('error during connect') ||
+              errorMsg.includes('cannot find the file specified') ||
+              errorMsg.includes('pipe') ||
+              errorMsg.includes('daemon');
+
+            if (isDockerError) {
+              // Re-throw so the main loop catches it and tries the next service
+              throw new Error(`Docker service unavailable: ${errorMsg}`);
+            }
+
+            return { stdout: '', stderr: errorMsg || 'Execution failed', exitCode: 1 };
           }
         },
       });
     }
-    
+
     // Add remote services
     executionServices.push(
       {
@@ -230,13 +271,13 @@ app.post('/api/run', async (req, res) => {
         transformRequest: async (lang, code, fetchFn) => {
           const runtimes = await getAvailableRuntimes(fetchFn);
           console.log('Available runtimes:', JSON.stringify(runtimes, null, 2));
-          
+
           // Find the runtime for the specific language
           const langRuntime = runtimes.find(r => r.language === lang);
           const version = langRuntime ? langRuntime.version : '10.2.0';
-          
+
           console.log(`Using version ${version} for language ${lang}`);
-          
+
           return {
             language: lang,
             version: version,
@@ -266,21 +307,21 @@ app.post('/api/run', async (req, res) => {
           // Judge0 requires a second request to get results
           const token = data.token;
           if (!token) throw new Error('No token received from Judge0');
-          
+
           // Wait a bit and then fetch results
           await new Promise(resolve => setTimeout(resolve, 2000));
-          
+
           const resultResponse = await fetchFn(`https://judge0-ce.p.rapidapi.com/submissions/${token}`, {
             headers: {
               'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'demo-key',
               'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
             }
           });
-          
+
           if (!resultResponse.ok) {
             throw new Error(`Judge0 result fetch failed: ${resultResponse.status}`);
           }
-          
+
           const resultData = await resultResponse.json();
           return {
             stdout: resultData.stdout || '',
@@ -299,20 +340,26 @@ app.post('/api/run', async (req, res) => {
     }
 
     let lastError = null;
-    
+
     for (const service of executionServices) {
       try {
         console.log(`Trying ${service.name} execution service...`);
-        
+
         const requestBody = await service.transformRequest(langId, code, fetchFn);
-        
-        // Handle local execution differently
+
+        // Handle local execution
         if (service.name === 'Local') {
-          const result = await service.transformResponse(requestBody, fetchFn);
-          console.log(`${service.name} execution successful`);
-          return res.json(result);
+          try {
+            const result = await service.transformResponse(requestBody, fetchFn);
+            console.log(`${service.name} execution successful`);
+            return res.json(result);
+          } catch (localError) {
+            console.warn(`Local execution unavailable, falling back: ${localError.message}`);
+            lastError = localError;
+            continue; // Proceed to next service (Piston)
+          }
         }
-        
+
         // Handle remote services
         const requestOptions = {
           method: 'POST',
@@ -335,10 +382,10 @@ app.post('/api/run', async (req, res) => {
 
         const data = await response.json();
         const result = await service.transformResponse(data, fetchFn);
-        
+
         console.log(`${service.name} execution successful`);
         return res.json(result);
-        
+
       } catch (error) {
         console.error(`${service.name} execution failed:`, error.message);
         lastError = error;
@@ -348,7 +395,7 @@ app.post('/api/run', async (req, res) => {
 
     // If all services failed, return a helpful error message
     console.error('All execution services failed');
-    return res.status(502).json({ 
+    return res.status(502).json({
       error: 'All execution services are currently unavailable',
       detail: lastError?.message || 'Unknown error',
       suggestion: 'Please try again later or check your internet connection'
@@ -356,8 +403,8 @@ app.post('/api/run', async (req, res) => {
 
   } catch (e) {
     console.error('Run API error:', e);
-    res.status(500).json({ 
-      error: 'Server error', 
+    res.status(500).json({
+      error: 'Server error',
       detail: String(e?.message || e),
       suggestion: 'Please check the server logs for more details'
     });
@@ -427,16 +474,16 @@ io.on('connection', (socket) => {
     // Security: Only allow syncing to sockets in the same rooms as the sender
     const senderRooms = Array.from(socket.rooms);
     const targetSocket = io.sockets.sockets.get(socketId);
-    
+
     if (!targetSocket) {
       console.warn(`[WARN] SYNC_CODE target socket ${socketId} not found`);
       return;
     }
-    
+
     // Check if target socket is in at least one room with the sender
     const targetRooms = Array.from(targetSocket.rooms);
     const commonRooms = senderRooms.filter(room => targetRooms.includes(room) && room !== socket.id);
-    
+
     if (commonRooms.length > 0) {
       io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     } else {
@@ -463,4 +510,14 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.SERVER_PORT || 5000;
-server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+server.listen(PORT, async () => {
+  console.log(`🚀 Professional Code Editor Backend running on port ${PORT}`);
+
+  // Diagnostic startup check for Docker
+  try {
+    await execAsync('docker info');
+    console.log('✅ Secure Code Sandbox: Docker is active and available.');
+  } catch (e) {
+    console.warn('⚠️  Secure Code Sandbox: Docker is not active. Falling back to remote execution services.');
+  }
+});

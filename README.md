@@ -1,186 +1,84 @@
-# LiveCode - Real-time Collaborative Code Editor
+# LiveCode
 
-A modern, real-time collaborative code editor built with React, Socket.io, and CodeMirror. Multiple users can code together in real-time, see each other's changes instantly, and execute code in multiple programming languages.
+**Real-time Collaborative Engineering IDE**
 
-![LiveCode](https://img.shields.io/badge/LiveCode-Collaborative-blue) ![React](https://img.shields.io/badge/React-18.2.0-blue) ![Socket.io](https://img.shields.io/badge/Socket.io-4.8.1-green)
+![React](https://img.shields.io/badge/React-18.2.0-blue) ![Yjs](https://img.shields.io/badge/Yjs-CRDT-orange) ![Socket.io](https://img.shields.io/badge/Socket.io-4.8.1-green) ![Docker](https://img.shields.io/badge/Docker-Sandbox-blue)
 
-## ✨ Features
+A professional-grade collaborative code editor engineered for high-concurrency synchronization, hybrid code execution, and premium developer experience. This project implements **CRDTs (Conflict-free Replicated Data Types)** to ensure guaranteed eventual consistency across distributed clients.
 
-- **Real-time Collaboration**: Multiple users can edit code simultaneously with live synchronization
-- **Multi-language Support**: 
-  - JavaScript (Browser execution)
-  - Python (Pyodide - WASM in-browser)
-  - Java (Remote compilation)
-  - C/C++ (Local/Remote compilation)
-  - Plain Text
-- **Code Execution**: Run code directly in the browser or via remote compilation services
-- **Multiple Themes**: Choose from 13+ beautiful editor themes (Monokai, Material, Dracula, Nord, and more)
-- **User Presence**: See who's connected to the room with user avatars
-- **Room Management**: Create or join rooms with unique room IDs
-- **Invite System**: Share room links or room IDs to invite collaborators
-- **Optimized UI**: Compact, responsive design that fits on screen without scrolling
-- **Secure**: Built with security best practices using Helmet and CORS protection
+## ✨ Key Features
+
+- **Conflict-Free Collaboration**: Powered by **Yjs**, ensuring seamless, wait-free editing without merge conflicts or data loss.
+- **Hybrid Execution Engine**: Multi-tier execution system supporting:
+  - **Docker Containers**: Secure, local sandboxing for C, C++, and Java.
+  - **WebAssembly (Pyodide)**: Direct in-browser Python execution with zero backend overhead.
+  - **Piston API**: Global cloud fallback for high availability.
+- **Real-Time Presence**: Synchronization of **multi-color cursors**, active selections, and user metadata (sub-50ms latency).
+- **Premium Design System**: Cyberpunk/Modern UI built with **Glassmorphism**, smooth transitions, and a custom CSS variable system.
+- **Syntax Highlighting**: Support for 15+ themes and multiple languages including C, C++, Java, and Python.
+
+## 🏗 Architecture
+
+### Real-Time Synchronization
+The core of LiveCode is built on **Yjs**, a high-performance CRDT framework.
+- **Mechanism**: Every change is represented as a unique, idempotent operation that converges and merges automatically across all peers.
+- **Awareness**: The `y-protocols/awareness` protocol is used to broadcast transient user state like cursor positions and "Currently Typing" badges.
+- **Transport**: WebSockets (Socket.IO) act as the delivery layer, ensuring low-latency message propagation.
+
+### Code Execution Guardrails
+The backend implements a **Graceful Fallback Logic**:
+1. **Tier 1 (Local)**: Attempts to spin up a Docker container on the host.
+2. **Tier 2 (Client-Side)**: For Python, execution is offloaded to the browser via WASM.
+3. **Tier 3 (Cloud)**: If local infrastructure is unavailable, requests are securely routed to the Piston execution service.
+
+## 🛠 Technology Stack
+
+- **Frontend**: React 18, Recoil, CodeMirror v5, Yjs, Vite, Vanilla CSS.
+- **Backend**: Node.js, Express, Socket.IO, y-websocket.
+- **Execution**: Docker, WebAssembly (Pyodide), Piston API.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
+- **Node.js**: v16 or higher
+- **Docker**: (Optional) For local code execution sandboxing.
 
 ### Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/bharathkumar39293/collaborative-code-editor.git
-cd collaborative-code-editor
-```
+1.  **Clone & Install**
+    ```bash
+    git clone https://github.com/bharathkumar39293/collaborative-code-editor.git
+    cd collaborative-code-editor
+    npm install
+    ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+2.  **Environment Setup**
+    ```bash
+    cp example.env .env
+    # Configure your VITE_SOCKET_SERVER_URL (default: http://localhost:5000)
+    ```
 
-3. Create a `.env` file (optional, for custom configuration):
-```bash
-cp example.env .env
-```
+3.  **Run Application**
+    ```bash
+    # Start the backend server
+    npm start
 
-Edit `.env` if needed:
-```
-VITE_SOCKET_SERVER_URL=http://localhost:5000
-VITE_SERVER_PORT=5000
-```
+    # In a new terminal, start the frontend
+    npm run dev
+    ```
 
-4. Start the development server:
-```bash
-# Start the backend server
-npm start
+4.  **Docker Setup (Optional)**
+    ```bash
+    # Build the execution sandbox
+    npm run setup:sandbox
+    ```
 
-# In a new terminal, start the frontend dev server
-npm run dev
-```
+## 🔒 Security
 
-5. Open your browser and navigate to `http://localhost:5173`
-
-## 📦 Building for Production
-
-```bash
-# Build the frontend
-npm run build
-
-# The built files will be in the `dist` directory
-# The server will automatically serve these files in production mode
-```
-
-## 🐳 Docker Deployment
-
-The project includes Docker support for easy deployment:
-
-```bash
-# Build and run with docker-compose
-docker-compose up -d
-```
-
-Make sure to update the `docker-compose.yml` file with your Docker username if needed.
-
-## 🏗️ Project Structure
-
-```
-realtime-collaborative-code-editor/
-├── src/
-│   ├── actions/          # Socket.io action definitions
-│   ├── components/       # React components
-│   │   ├── Client.jsx    # User avatar component
-│   │   ├── Editor.jsx    # CodeMirror editor wrapper
-│   │   └── Header.jsx    # App header with room info
-│   ├── pages/            # Page components
-│   │   ├── Home.jsx      # Landing page
-│   │   └── EditorPage.jsx # Main editor page
-│   ├── atoms.js          # Recoil state management
-│   ├── socket.js         # Socket.io client setup
-│   └── App.jsx           # Main app component
-├── server.js             # Express + Socket.io server
-├── docker-compose.yml    # Docker configuration
-└── package.json          # Dependencies
-```
-
-## 🛠️ Technologies Used
-
-- **Frontend**:
-  - React 18.2.0
-  - Vite 7.1.2
-  - CodeMirror 5.65.20
-  - Recoil (State management)
-  - React Router DOM 7.8.2
-  - React Hot Toast (Notifications)
-  - React Avatar (User avatars)
-
-- **Backend**:
-  - Express 4.21.2
-  - Socket.io 4.8.1
-  - Helmet (Security)
-  - Compression (Performance)
-
-- **Code Execution**:
-  - Pyodide (Python in-browser)
-  - Remote compilation services (Java, C/C++)
-
-## 🎨 Available Themes
-
-- Monokai
-- Material
-- Material Darker
-- Material Palenight
-- Dracula
-- Twilight
-- Cobalt
-- Eclipse
-- Blackboard
-- Neo
-- Nord
-- Seti
-- Ruby Blue
-- Midnight
-
-## 🔒 Security Features
-
-- Helmet.js for security headers
-- CORS protection with configurable allowed origins
-- Input validation and sanitization
-- Secure code execution sandboxing
-
-## 📝 Usage
-
-1. **Create a Room**: Enter your username and click "Create Room"
-2. **Join a Room**: Enter your username and a room ID, then click "Join Room"
-3. **Invite Others**: Use the "Copy Room ID" or "Copy Invite Link" buttons in the sidebar
-4. **Code Together**: Start typing - changes sync in real-time to all connected users
-5. **Run Code**: Click the "▶ Run Code" button to execute your code
-6. **Change Language**: Select a programming language from the dropdown
-7. **Change Theme**: Choose your preferred editor theme
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is open source and available under the MIT License.
-
-## 👤 Author
-
-**Bharath Kumar**
-
-- GitHub: [@bharathkumar39293](https://github.com/bharathkumar39293)
-
-## 🙏 Acknowledgments
-
-- CodeMirror for the excellent code editor
-- Socket.io for real-time communication
-- Pyodide for in-browser Python execution
-- All the amazing open-source contributors
+- Isolated code execution via Docker containers with CPU/Memory limits.
+- Sub-process management with strict timeouts.
+- Helmet.js and CORS protection for API endpoints.
 
 ---
-
-Made with ❤️ using React and Socket.io
+**License**: MIT  
+**Author**: [Bharath Kumar](https://github.com/bharathkumar39293)

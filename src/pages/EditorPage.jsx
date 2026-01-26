@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
-import Header from "../components/Header";
 import { language, cmtheme } from "../atoms";
 import { useRecoilState } from "recoil";
 import ACTIONS from "../actions/Actions";
@@ -13,22 +12,16 @@ import {
   Navigate,
   useParams,
 } from "react-router-dom";
+import { LANGUAGE_TEMPLATES } from "../constants/templates";
+import Header from "../components/Header";
 
 const EditorPage = () => {
-  const LANGUAGE_TEMPLATES = {
-    javascript: `// JavaScript template\nfunction main() {\n  console.log('Hello from JavaScript');\n}\n\nmain();\n`,
-    python: `# Python template\ndef main():\n    print('Hello from Python')\n\nif __name__ == '__main__':\n    main()\n`,
-    'text/x-java': `// Java template\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java");\n    }\n}\n`,
-    'text/x-c++src': `// C++ template\n#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    cout << "Hello from C++" << endl;\n    return 0;\n}\n`,
-    'text/plain': ``,
-  };
   const [lang, setLang] = useRecoilState(language);
   const [theme, setTheme] = useRecoilState(cmtheme);
 
   const [clients, setClients] = useState([]);
   const socketRef = useRef(null);
-  const codeRef = useRef(""); // Hold current code state
-  const [externalCode, setExternalCode] = useState(""); // Trigger re-render on remote updates
+  const codeRef = useRef("");
   const initializedRef = useRef(false);
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
@@ -37,6 +30,7 @@ const EditorPage = () => {
   const pyodideRef = useRef(null);
   const [pyodideLoading, setPyodideLoading] = useState(false);
 
+  // ... (Keep existing EnsurePyodide and resolveApiBase functions same as before)
   async function ensurePyodide() {
     if (pyodideRef.current) return pyodideRef.current;
     setPyodideLoading(true);
@@ -59,15 +53,12 @@ const EditorPage = () => {
   }
 
   const resolveApiBase = () => {
-    // Prefer explicit env if provided
     const envUrl = import.meta?.env?.VITE_SOCKET_SERVER_URL;
     if (envUrl && typeof envUrl === 'string' && envUrl.trim()) return envUrl.trim();
     if (typeof window !== 'undefined') {
       const { origin, hostname, port } = window.location;
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        // If running vite on 5173, API lives on 5000
         if (port === '5173') return 'http://localhost:5000';
-        // Otherwise assume same-origin
         return origin;
       }
       return origin;
@@ -80,9 +71,7 @@ const EditorPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (initializedRef.current) {
-      return;
-    }
+    if (initializedRef.current) return;
     initializedRef.current = true;
 
     const init = async () => {
@@ -111,79 +100,40 @@ const EditorPage = () => {
         if (username !== location.state.username) {
           toast.success(`${username} joined the room.`);
         }
-        // Deduplicate by socketId to avoid showing the same person twice
         const uniqueBySocketId = Array.from(
           clients.reduce((map, c) => {
-            if (!map.has(c.socketId)) {
-              map.set(c.socketId, c);
-            }
+            if (!map.has(c.socketId)) map.set(c.socketId, c);
             return map;
           }, new Map()).values()
         );
         setClients(uniqueBySocketId);
-
-        // If this is a new user joining (not us), request code sync from them
-        // If we are the new user, we'll receive code from existing users via their SYNC_CODE
-        if (socketId !== socketRef.current.id && codeRef.current) {
-          // We have code, send it to the new user
-          socketRef.current.emit(ACTIONS.SYNC_CODE, {
-            code: codeRef.current,
-            socketId,
-          });
-        }
       });
 
       socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
         toast.success(`${username} left the room.`);
         setClients((prev) => prev.filter((client) => client.socketId !== socketId));
       });
-
-      // Handle incoming code changes and update editor content
-      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
-        if (code !== null && code !== codeRef.current) {
-          codeRef.current = code;
-          setExternalCode(code);
-        }
-      });
     };
     init();
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      if (socketRef.current) socketRef.current.disconnect();
     };
   }, [location.state, navigate, roomId]);
 
-  // Insert standard template code when language changes
   useEffect(() => {
     const template = LANGUAGE_TEMPLATES[lang];
     if (template === undefined || template === null) return;
-
     codeRef.current = template;
-    setExternalCode(template);
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code: template });
-    }
-
-    // Preload Pyodide when Python is selected to avoid delay on first run
     if (lang === 'python' && !pyodideRef.current) {
-      ensurePyodide().catch((e) => {
-        console.error('Pyodide preload failed', e);
-        toast.error('Failed to load Python runtime');
-      });
+      ensurePyodide().catch((e) => toast.error('Failed to load Python runtime'));
     }
   }, [lang]);
 
-  // Callback when user types code locally
   function onCodeChangeHandler(code) {
     codeRef.current = code;
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
-    }
   }
 
-  // Execute code based on selected language
   const executeCode = async () => {
     if (!codeRef.current.trim()) {
       toast.error("No code to execute");
@@ -196,10 +146,9 @@ const EditorPage = () => {
 
     try {
       let result = "";
-      
+
       switch (lang) {
         case "javascript":
-          // Use Function constructor for safer execution and capture logs/errors
           const func = new Function(codeRef.current);
           const logs = [];
           const errs = [];
@@ -215,13 +164,9 @@ const EditorPage = () => {
           }
           result = (errs.length ? `Error: ${errs.join("\n")}\n` : "") + (logs.join("\n"));
           break;
-          
+
         case "python":
-          // Run Python via Pyodide (WASM in-browser)
-          console.log("Starting Python execution...");
           const pyodide = await ensurePyodide();
-          console.log("Pyodide loaded, setting up capture...");
-          
           await pyodide.runPythonAsync(`
 import sys, io, json, traceback
 def __exec_and_capture(source):
@@ -236,59 +181,18 @@ def __exec_and_capture(source):
         sys.stdout, sys.stderr = old_out, old_err
     return json.dumps({"out": stdout.getvalue(), "err": stderr.getvalue()})
           `);
-          
-          console.log("Executing Python code:", codeRef.current);
           const pyResultJson = await pyodide.runPythonAsync(`__exec_and_capture(${JSON.stringify(codeRef.current)})`);
-          console.log("Python execution result:", pyResultJson);
-          
           try {
             const parsed = JSON.parse(pyResultJson);
             result = parsed.out || (parsed.err ? `Error: ${parsed.err}` : "");
-            console.log("Parsed result:", result);
           } catch (e) {
-            console.error("Failed to parse Python result:", e);
             result = String(pyResultJson);
           }
           break;
-          
+
         case "text/x-java":
-          // Execute via server-run endpoint (multiple services)
-          try {
-            const apiBase = resolveApiBase();
-            const resp = await fetch(`${apiBase}/api/run`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ language: lang, code: codeRef.current }),
-            });
-            const raw = await resp.text();
-            let json;
-            try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
-            if (!resp.ok) {
-              const errorMsg = json?.error || raw || 'Execution failed';
-              const detail = json?.detail ? `\nDetails: ${json.detail}` : '';
-              const suggestion = json?.suggestion ? `\nSuggestion: ${json.suggestion}` : '';
-              throw new Error(`${errorMsg}${detail}${suggestion}`);
-            }
-            const stdout = json?.stdout || '';
-            const stderr = json?.stderr || '';
-            const exitCode = json?.exitCode;
-            
-            // Format output with exit code if non-zero
-            let output = '';
-            if (stderr) output += `Error: ${stderr}\n`;
-            if (stdout) output += stdout;
-            if (exitCode && exitCode !== 0 && !stderr) {
-              output += `\nProgram exited with code ${exitCode}`;
-            }
-            result = output || 'No output';
-          } catch (e) {
-            result = `Error: ${e.message}`;
-          }
-          break;
-          
         case "text/x-c++src":
         case "text/x-csrc":
-          // Execute via server-run endpoint (multiple services)
           try {
             const apiBase = resolveApiBase();
             const resp = await fetch(`${apiBase}/api/run`, {
@@ -302,14 +206,11 @@ def __exec_and_capture(source):
             if (!resp.ok) {
               const errorMsg = json?.error || raw || 'Execution failed';
               const detail = json?.detail ? `\nDetails: ${json.detail}` : '';
-              const suggestion = json?.suggestion ? `\nSuggestion: ${json.suggestion}` : '';
-              throw new Error(`${errorMsg}${detail}${suggestion}`);
+              throw new Error(`${errorMsg}${detail}`);
             }
             const stdout = json?.stdout || '';
             const stderr = json?.stderr || '';
             const exitCode = json?.exitCode;
-            
-            // Format output with exit code if non-zero
             let output = '';
             if (stderr) output += `Error: ${stderr}\n`;
             if (stdout) output += stdout;
@@ -321,15 +222,15 @@ def __exec_and_capture(source):
             result = `Error: ${e.message}`;
           }
           break;
-          
+
         case "text/plain":
           result = "Plain text - no execution needed";
           break;
-          
+
         default:
           result = "Language not supported for execution";
       }
-      
+
       setOutput(result || "");
       setHasRun(true);
       toast.success("Code executed successfully");
@@ -361,27 +262,48 @@ def __exec_and_capture(source):
     }
   }
 
-  if (!location.state) {
-    return <Navigate to="/" />;
-  }
+  if (!location.state) return <Navigate to="/" />;
 
   return (
-    <div className="pageWrap">
+    <div className="flex-col" style={{ height: '100vh', width: '100vw', background: 'var(--bg-app)' }}>
       <Header
         roomId={roomId}
-        connected={socketRef.current?.connected ?? false}
+        connected={socketRef.current?.connected}
         onCopyRoomId={copyRoomId}
         onCopyInviteLink={copyInviteLink}
       />
-      <div className="mainWrap">
-        <div className="aside">
-          <div className="asideTop">
-            <label>
-              Select Language:
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Sidebar */}
+        <aside className="glass-panel animate-fade" style={{
+          width: 'var(--sidebar-width)',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '24px',
+          gap: '24px',
+          borderRight: '1px solid var(--border-light)',
+          borderRadius: '0',
+          zIndex: 10
+        }}>
+          {/* Controls */}
+          <div className="flex-col gap-4">
+            <div className="flex-col gap-2">
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Programming Language
+              </label>
               <select
                 value={lang}
                 onChange={(e) => setLang(e.target.value)}
-                className="seLang"
+                style={{
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-light)',
+                  color: 'var(--text-main)',
+                  padding: '10px',
+                  borderRadius: 'var(--radius-sm)',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
               >
                 <option value="text/plain">Text</option>
                 <option value="javascript">JavaScript</option>
@@ -389,14 +311,25 @@ def __exec_and_capture(source):
                 <option value="text/x-java">Java</option>
                 <option value="text/x-c++src">C/C++</option>
               </select>
-            </label>
+            </div>
 
-            <label>
-              Select Theme:
+            <div className="flex-col gap-2">
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Editor Theme
+              </label>
               <select
                 value={theme}
                 onChange={(e) => setTheme(e.target.value)}
-                className="seLang"
+                style={{
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-light)',
+                  color: 'var(--text-main)',
+                  padding: '10px',
+                  borderRadius: 'var(--radius-sm)',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
               >
                 <option value="monokai">Monokai</option>
                 <option value="material">Material</option>
@@ -413,67 +346,121 @@ def __exec_and_capture(source):
                 <option value="rubyblue">Ruby Blue</option>
                 <option value="midnight">Midnight</option>
               </select>
-            </label>
+            </div>
           </div>
 
-          <div className="asideInner">
-            <h3>Connected</h3>
-            <div className="clientsList">
+          <div style={{ width: '100%', height: '1px', background: 'var(--border-light)' }} />
+
+          {/* Connected Users */}
+          <div style={{ flex: 1, overflowY: 'auto' }} className="flex-col gap-3">
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Collaborators ({clients.length})
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '12px' }}>
               {clients.map((client) => (
                 <Client key={client.socketId} username={client.username} />
               ))}
             </div>
           </div>
 
-          <div className="asideBottom">
-            <div className="actions">
-              <button className="btn copyBtn" onClick={copyRoomId}>
-                Copy Room ID
-              </button>
-              <button className="btn copyBtn" onClick={copyInviteLink}>
-                Copy Invite Link
-              </button>
-            </div>
+          <div className="glass-panel" style={{ padding: '16px', borderRadius: 'var(--radius-md)', background: 'rgba(0,0,0,0.2)' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px 0', lineHeight: '1.4' }}>
+              Tip: Code is automatically saved and synced with everyone in the room.
+            </p>
           </div>
-        </div>
+        </aside>
 
-        <div className="editorWrap">
-          <Editor
-            socketRef={socketRef}
-            roomId={roomId}
-            lang={lang}
-            theme={theme}
-            onCodeChange={onCodeChangeHandler}
-            externalCode={externalCode}
-          />
-          <div className="executionPanel">
-            <div className="executionControls">
-              <button 
-                className="btn runBtn" 
-                onClick={executeCode}
-                disabled={isRunning || (lang === "python" && pyodideLoading)}
-              >
-                {isRunning ? "Running..." : "▶ Run Code"}
-              </button>
-              <span className="executionInfo">
-                {lang === "javascript" ? "JavaScript (Browser)" : 
-                 lang === "python" ? (pyodideLoading ? "Python (Loading runtime...)" : "Python (Pyodide)") :
-                 lang === "text/x-java" ? "Java (Remote Compilation)" :
-                 lang === "text/x-c++src" ? "C++ (Local/Remote Compilation)" :
-                 lang === "text/x-csrc" ? "C (Local/Remote Compilation)" :
-                 "Text Mode"}
-              </span>
+        {/* Main Editor Area */}
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+
+          {/* Floating Execution Info */}
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: '25px',
+            zIndex: 10,
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center'
+          }}>
+            <div className="glass-panel animate-slide-up" style={{ padding: '6px 14px', borderRadius: '30px', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
+              {lang === "javascript" ? "JS / Browser" :
+                lang === "python" ? (pyodideLoading ? "Python / Loading..." : "Python / WebAssembly") :
+                  lang === "text/x-java" ? "Java / Remote" :
+                    lang === "text/x-c++src" ? "C++ / Docker Sandbox" :
+                      "Text Editor"}
             </div>
-            {hasRun && (
-              <div className="outputPanel">
-                <div className="outputHeader">Output:</div>
-                <pre className="outputContent">
-                  {error ? `Error: ${error}` : output || "No output"}
-                </pre>
-              </div>
-            )}
+            <button
+              className="btn-primary"
+              onClick={executeCode}
+              disabled={isRunning || (lang === "python" && pyodideLoading)}
+              style={{ padding: '8px 20px' }}
+            >
+              {isRunning ? "Running..." : "▶ Run"}
+            </button>
           </div>
-        </div>
+
+          {/* Editor */}
+          <section style={{ flex: 1, overflow: 'hidden' }} className="animate-fade">
+            <Editor
+              socketRef={socketRef}
+              roomId={roomId}
+              lang={lang}
+              theme={theme}
+              onCodeChange={onCodeChangeHandler}
+              username={location.state?.username}
+            />
+          </section>
+
+          {/* Terminal / Output Panel */}
+          {hasRun && (
+            <section className="glass-panel animate-slide-up" style={{
+              height: '35%',
+              display: 'flex',
+              flexDirection: 'column',
+              borderRadius: '0',
+              borderTop: '2px solid var(--primary)',
+              zIndex: 20
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '12px 24px',
+                borderBottom: '1px solid var(--border-light)',
+                background: 'rgba(0,0,0,0.3)',
+                alignItems: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: error ? '#ef4444' : '#22c55e' }} />
+                  <span style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Output Terminal
+                  </span>
+                </div>
+                <button
+                  onClick={() => setHasRun(false)}
+                  className="btn-ghost"
+                  style={{ padding: '4px 8px', borderRadius: '4px', border: 'none' }}
+                >
+                  ✕
+                </button>
+              </div>
+              <pre style={{
+                padding: '24px',
+                margin: 0,
+                flex: 1,
+                overflow: 'auto',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '13px',
+                lineHeight: '1.6',
+                color: error ? '#f87171' : 'var(--text-main)',
+                whiteSpace: 'pre-wrap',
+                background: 'rgba(15, 23, 42, 0.5)'
+              }}>
+                {error ? `[ERROR]\n${error}` : output || "Program finished with no output."}
+              </pre>
+            </section>
+          )}
+        </main>
       </div>
     </div>
   );

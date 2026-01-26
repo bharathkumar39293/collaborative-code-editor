@@ -1,8 +1,7 @@
-import './App.css';
 import React, { Suspense, lazy } from 'react';
-import {BrowserRouter, Routes, Route} from 'react-router-dom';
-import {Toaster} from 'react-hot-toast';
-import {RecoilRoot} from "recoil";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import { RecoilRoot } from "recoil";
 
 const Home = lazy(() => import('./pages/Home'));
 const EditorPage = lazy(() => import('./pages/EditorPage'));
