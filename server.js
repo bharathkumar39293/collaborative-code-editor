@@ -4,6 +4,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { Server } from 'socket.io';
+import { WebSocketServer } from 'ws';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { setupWSConnection, setPersistence } = require('y-websocket/bin/utils');
+const { LeveldbPersistence } = require('y-leveldb');
+import * as Y from 'yjs';
 import ACTIONS from './src/actions/Actions.js';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -45,6 +51,46 @@ const io = new Server(server, {
     },
     methods: ['GET', 'POST'],
   },
+});
+
+// Yjs WebSocket Server Setup
+const wss = new WebSocketServer({ noServer: true });
+
+// Configure LevelDB Persistence
+const ldb = new LeveldbPersistence('./storage');
+setPersistence({
+  bindState: async (docName, doc) => {
+    const persistedYdoc = await ldb.getYDoc(docName);
+    const persistedStateVector = Y.encodeStateVector(doc);
+    const diff = Y.encodeStateAsUpdate(persistedYdoc, persistedStateVector);
+
+    // Apply the persisted state to the current doc
+    if (diff.byteLength > 0) {
+      Y.applyUpdate(doc, diff);
+    }
+
+    // Store updates
+    doc.on('update', update => {
+      ldb.storeUpdate(docName, update);
+    });
+  },
+  writeState: async (docName, doc) => {
+    // efficient storage is already handled by ldb.storeUpdate in the listener
+  }
+});
+
+wss.on('connection', (ws, req) => {
+  setupWSConnection(ws, req);
+});
+
+
+// Handle upgrade requests
+server.on('upgrade', (request, socket, head) => {
+  if (request.url.startsWith('/yjs')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  }
 });
 
 // Security and performance middleware
@@ -154,7 +200,7 @@ app.post('/api/run', async (req, res) => {
 
     // Try multiple execution services in order of preference
     const executionServices = [];
-    
+
     // Only add local execution on Unix-like systems (not Windows)
     if (process.platform !== 'win32') {
       executionServices.push({
@@ -167,18 +213,18 @@ app.post('/api/run', async (req, res) => {
           const tempDir = tmpdir();
           const filePath = join(tempDir, fileName);
           const execPath = join(tempDir, `exec_${Date.now()}`);
-          
+
           try {
             // Write code to temporary file
             await writeFile(filePath, code);
-            
+
             // Compile and execute
             const compiler = lang === 'cpp' ? 'g++' : 'gcc';
             const compileCmd = `${compiler} -o "${execPath}" "${filePath}" 2>&1`;
-            
+
             try {
               const { stdout: compileOutput, stderr: compileError } = await execAsync(compileCmd);
-              
+
               if (compileError) {
                 return {
                   stdout: '',
@@ -193,16 +239,16 @@ app.post('/api/run', async (req, res) => {
               }
               throw compileErr;
             }
-            
+
             // Execute the compiled program
             const { stdout: runOutput, stderr: runError } = await execAsync(`"${execPath}" 2>&1`);
-            
+
             return {
               stdout: runOutput || '',
               stderr: runError || '',
               exitCode: 0,
             };
-            
+
           } catch (error) {
             return {
               stdout: '',
@@ -221,7 +267,7 @@ app.post('/api/run', async (req, res) => {
         },
       });
     }
-    
+
     // Add remote services
     executionServices.push(
       {
@@ -230,13 +276,13 @@ app.post('/api/run', async (req, res) => {
         transformRequest: async (lang, code, fetchFn) => {
           const runtimes = await getAvailableRuntimes(fetchFn);
           console.log('Available runtimes:', JSON.stringify(runtimes, null, 2));
-          
+
           // Find the runtime for the specific language
           const langRuntime = runtimes.find(r => r.language === lang);
           const version = langRuntime ? langRuntime.version : '10.2.0';
-          
+
           console.log(`Using version ${version} for language ${lang}`);
-          
+
           return {
             language: lang,
             version: version,
@@ -266,21 +312,21 @@ app.post('/api/run', async (req, res) => {
           // Judge0 requires a second request to get results
           const token = data.token;
           if (!token) throw new Error('No token received from Judge0');
-          
+
           // Wait a bit and then fetch results
           await new Promise(resolve => setTimeout(resolve, 2000));
-          
+
           const resultResponse = await fetchFn(`https://judge0-ce.p.rapidapi.com/submissions/${token}`, {
             headers: {
               'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'demo-key',
               'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
             }
           });
-          
+
           if (!resultResponse.ok) {
             throw new Error(`Judge0 result fetch failed: ${resultResponse.status}`);
           }
-          
+
           const resultData = await resultResponse.json();
           return {
             stdout: resultData.stdout || '',
@@ -299,20 +345,20 @@ app.post('/api/run', async (req, res) => {
     }
 
     let lastError = null;
-    
+
     for (const service of executionServices) {
       try {
         console.log(`Trying ${service.name} execution service...`);
-        
+
         const requestBody = await service.transformRequest(langId, code, fetchFn);
-        
+
         // Handle local execution differently
         if (service.name === 'Local') {
           const result = await service.transformResponse(requestBody, fetchFn);
           console.log(`${service.name} execution successful`);
           return res.json(result);
         }
-        
+
         // Handle remote services
         const requestOptions = {
           method: 'POST',
@@ -335,10 +381,10 @@ app.post('/api/run', async (req, res) => {
 
         const data = await response.json();
         const result = await service.transformResponse(data, fetchFn);
-        
+
         console.log(`${service.name} execution successful`);
         return res.json(result);
-        
+
       } catch (error) {
         console.error(`${service.name} execution failed:`, error.message);
         lastError = error;
@@ -348,7 +394,7 @@ app.post('/api/run', async (req, res) => {
 
     // If all services failed, return a helpful error message
     console.error('All execution services failed');
-    return res.status(502).json({ 
+    return res.status(502).json({
       error: 'All execution services are currently unavailable',
       detail: lastError?.message || 'Unknown error',
       suggestion: 'Please try again later or check your internet connection'
@@ -356,8 +402,8 @@ app.post('/api/run', async (req, res) => {
 
   } catch (e) {
     console.error('Run API error:', e);
-    res.status(500).json({ 
-      error: 'Server error', 
+    res.status(500).json({
+      error: 'Server error',
       detail: String(e?.message || e),
       suggestion: 'Please check the server logs for more details'
     });
@@ -427,16 +473,16 @@ io.on('connection', (socket) => {
     // Security: Only allow syncing to sockets in the same rooms as the sender
     const senderRooms = Array.from(socket.rooms);
     const targetSocket = io.sockets.sockets.get(socketId);
-    
+
     if (!targetSocket) {
       console.warn(`[WARN] SYNC_CODE target socket ${socketId} not found`);
       return;
     }
-    
+
     // Check if target socket is in at least one room with the sender
     const targetRooms = Array.from(targetSocket.rooms);
     const commonRooms = senderRooms.filter(room => targetRooms.includes(room) && room !== socket.id);
-    
+
     if (commonRooms.length > 0) {
       io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     } else {

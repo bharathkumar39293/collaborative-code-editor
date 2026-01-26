@@ -28,7 +28,6 @@ const EditorPage = () => {
   const [clients, setClients] = useState([]);
   const socketRef = useRef(null);
   const codeRef = useRef(""); // Hold current code state
-  const [externalCode, setExternalCode] = useState(""); // Trigger re-render on remote updates
   const initializedRef = useRef(false);
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
@@ -122,15 +121,6 @@ const EditorPage = () => {
         );
         setClients(uniqueBySocketId);
 
-        // If this is a new user joining (not us), request code sync from them
-        // If we are the new user, we'll receive code from existing users via their SYNC_CODE
-        if (socketId !== socketRef.current.id && codeRef.current) {
-          // We have code, send it to the new user
-          socketRef.current.emit(ACTIONS.SYNC_CODE, {
-            code: codeRef.current,
-            socketId,
-          });
-        }
       });
 
       socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
@@ -138,13 +128,6 @@ const EditorPage = () => {
         setClients((prev) => prev.filter((client) => client.socketId !== socketId));
       });
 
-      // Handle incoming code changes and update editor content
-      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
-        if (code !== null && code !== codeRef.current) {
-          codeRef.current = code;
-          setExternalCode(code);
-        }
-      });
     };
     init();
 
@@ -161,10 +144,6 @@ const EditorPage = () => {
     if (template === undefined || template === null) return;
 
     codeRef.current = template;
-    setExternalCode(template);
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code: template });
-    }
 
     // Preload Pyodide when Python is selected to avoid delay on first run
     if (lang === 'python' && !pyodideRef.current) {
@@ -178,9 +157,6 @@ const EditorPage = () => {
   // Callback when user types code locally
   function onCodeChangeHandler(code) {
     codeRef.current = code;
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
-    }
   }
 
   // Execute code based on selected language
@@ -196,7 +172,7 @@ const EditorPage = () => {
 
     try {
       let result = "";
-      
+
       switch (lang) {
         case "javascript":
           // Use Function constructor for safer execution and capture logs/errors
@@ -215,13 +191,13 @@ const EditorPage = () => {
           }
           result = (errs.length ? `Error: ${errs.join("\n")}\n` : "") + (logs.join("\n"));
           break;
-          
+
         case "python":
           // Run Python via Pyodide (WASM in-browser)
           console.log("Starting Python execution...");
           const pyodide = await ensurePyodide();
           console.log("Pyodide loaded, setting up capture...");
-          
+
           await pyodide.runPythonAsync(`
 import sys, io, json, traceback
 def __exec_and_capture(source):
@@ -236,11 +212,11 @@ def __exec_and_capture(source):
         sys.stdout, sys.stderr = old_out, old_err
     return json.dumps({"out": stdout.getvalue(), "err": stderr.getvalue()})
           `);
-          
+
           console.log("Executing Python code:", codeRef.current);
           const pyResultJson = await pyodide.runPythonAsync(`__exec_and_capture(${JSON.stringify(codeRef.current)})`);
           console.log("Python execution result:", pyResultJson);
-          
+
           try {
             const parsed = JSON.parse(pyResultJson);
             result = parsed.out || (parsed.err ? `Error: ${parsed.err}` : "");
@@ -250,7 +226,7 @@ def __exec_and_capture(source):
             result = String(pyResultJson);
           }
           break;
-          
+
         case "text/x-java":
           // Execute via server-run endpoint (multiple services)
           try {
@@ -272,7 +248,7 @@ def __exec_and_capture(source):
             const stdout = json?.stdout || '';
             const stderr = json?.stderr || '';
             const exitCode = json?.exitCode;
-            
+
             // Format output with exit code if non-zero
             let output = '';
             if (stderr) output += `Error: ${stderr}\n`;
@@ -285,7 +261,7 @@ def __exec_and_capture(source):
             result = `Error: ${e.message}`;
           }
           break;
-          
+
         case "text/x-c++src":
         case "text/x-csrc":
           // Execute via server-run endpoint (multiple services)
@@ -308,7 +284,7 @@ def __exec_and_capture(source):
             const stdout = json?.stdout || '';
             const stderr = json?.stderr || '';
             const exitCode = json?.exitCode;
-            
+
             // Format output with exit code if non-zero
             let output = '';
             if (stderr) output += `Error: ${stderr}\n`;
@@ -321,15 +297,15 @@ def __exec_and_capture(source):
             result = `Error: ${e.message}`;
           }
           break;
-          
+
         case "text/plain":
           result = "Plain text - no execution needed";
           break;
-          
+
         default:
           result = "Language not supported for execution";
       }
-      
+
       setOutput(result || "");
       setHasRun(true);
       toast.success("Code executed successfully");
@@ -444,24 +420,23 @@ def __exec_and_capture(source):
             lang={lang}
             theme={theme}
             onCodeChange={onCodeChangeHandler}
-            externalCode={externalCode}
           />
           <div className="executionPanel">
             <div className="executionControls">
-              <button 
-                className="btn runBtn" 
+              <button
+                className="btn runBtn"
                 onClick={executeCode}
                 disabled={isRunning || (lang === "python" && pyodideLoading)}
               >
                 {isRunning ? "Running..." : "▶ Run Code"}
               </button>
               <span className="executionInfo">
-                {lang === "javascript" ? "JavaScript (Browser)" : 
-                 lang === "python" ? (pyodideLoading ? "Python (Loading runtime...)" : "Python (Pyodide)") :
-                 lang === "text/x-java" ? "Java (Remote Compilation)" :
-                 lang === "text/x-c++src" ? "C++ (Local/Remote Compilation)" :
-                 lang === "text/x-csrc" ? "C (Local/Remote Compilation)" :
-                 "Text Mode"}
+                {lang === "javascript" ? "JavaScript (Browser)" :
+                  lang === "python" ? (pyodideLoading ? "Python (Loading runtime...)" : "Python (Pyodide)") :
+                    lang === "text/x-java" ? "Java (Remote Compilation)" :
+                      lang === "text/x-c++src" ? "C++ (Local/Remote Compilation)" :
+                        lang === "text/x-csrc" ? "C (Local/Remote Compilation)" :
+                          "Text Mode"}
               </span>
             </div>
             {hasRun && (

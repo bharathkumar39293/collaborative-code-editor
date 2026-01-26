@@ -1,186 +1,91 @@
-# LiveCode - Real-time Collaborative Code Editor
+# LiveCode
 
-A modern, real-time collaborative code editor built with React, Socket.io, and CodeMirror. Multiple users can code together in real-time, see each other's changes instantly, and execute code in multiple programming languages.
+**Real-time Collaborative Code Editor**
 
-![LiveCode](https://img.shields.io/badge/LiveCode-Collaborative-blue) ![React](https://img.shields.io/badge/React-18.2.0-blue) ![Socket.io](https://img.shields.io/badge/Socket.io-4.8.1-green)
+![React](https://img.shields.io/badge/React-18.2.0-blue) ![Socket.io](https://img.shields.io/badge/Socket.io-4.8.1-green) ![Status](https://img.shields.io/badge/Status-Prototype-yellow)
 
-## ✨ Features
+A lightweight collaborative code editor engineered to demonstrate real-time synchronization, experimental code execution strategies, and modular state management. This project serves as a reference implementation for WebSocket-based collaboration patterns, while explicitly highlighting the trade-offs between simplicity and consistency guarantees.
 
-- **Real-time Collaboration**: Multiple users can edit code simultaneously with live synchronization
-- **Multi-language Support**: 
-  - JavaScript (Browser execution)
-  - Python (Pyodide - WASM in-browser)
-  - Java (Remote compilation)
-  - C/C++ (Local/Remote compilation)
-  - Plain Text
-- **Code Execution**: Run code directly in the browser or via remote compilation services
-- **Multiple Themes**: Choose from 13+ beautiful editor themes (Monokai, Material, Dracula, Nord, and more)
-- **User Presence**: See who's connected to the room with user avatars
-- **Room Management**: Create or join rooms with unique room IDs
-- **Invite System**: Share room links or room IDs to invite collaborators
-- **Optimized UI**: Compact, responsive design that fits on screen without scrolling
-- **Secure**: Built with security best practices using Helmet and CORS protection
+## 🏗 Architecture & Trade-offs
+
+### Real-time Synchronization
+The application uses **Event Broadcasting** via Socket.io rather than Operational Transformation (OT) or Conflict-free Replicated Data Types (CRDTs).
+
+*   **Approach**: `CODE_CHANGE` events are broadcast to all other clients in the room.
+*   **Concurrency Model**: **Last-Write-Wins (LWW)**.
+*   **Trade-off**: This approach drastically reduces implementation complexity and backend CPU load compared to OT/CRDT. However, it provides **weaker consistency guarantees**. In high-latency scenarios with concurrent edits, temporary divergence or overwrites may occur.
+*   **Note**: For production-grade text collaboration requiring eventual consistency under partition, a migration to CRDTs (e.g., Yjs) is recommended (see Roadmap).
+
+### Failure Modes
+*   **Late Join**: New users receive the last known document snapshot emitted by an active peer upon joining a room.
+*   **Disconnects**: If a user disconnects, their presence is removed immediately. No offline support is currently implemented; changes made while disconnected are not queued.
+*   **Server Restart**: The backend is **stateless**. If the server restarts, all active rooms and document states are lost. This design simplifies horizontal scaling but requires an external persistence layer (e.g., Redis/Postgres) for production use.
+
+### Explicit Non-Guarantees
+*   **No Offline Support**: Edits made while disconnected are not queued and will be lost.
+*   **No Strong Consistency**: Concurrent edits are not guaranteed to converge (LWW).
+*   **No Malicious User Protection**: The current architecture does not rate-limit or authenticate socket connections.
+
+## 🛠 Technology Choices
+
+### Frontend
+*   **React 18 + Vite**: Chosen for high-performance rendering and rapid development cycle.
+*   **Recoil**: Used for **atomic state management**. We selected Recoil over Redux to minimize boilerplate and ensure granular re-renders during high-frequency typing events. *Note: This choice will be revisited if the collaboration logic migrates to a CRDT-based shared state library like Yjs.*
+*   **CodeMirror v5**: Integrated for its mature ecosystem and stability. While v6 offers better accessibility and mobile support, v5 provides a battle-tested API for this specific prototype scope.
+
+### Code Execution
+*   **Python**: Executed client-side via **Pyodide** (WASM), ensuring zero backend overhead and browser-level isolation.
+*   **C/C++/Java**: Executed via remote APIs (Piston/Judge0) or local child processes.
+
+## 🔒 Security Considerations
+
+> [!WARNING]
+> **Remote Code Execution (RCE) Risk**
+
+*   **Local Execution**: The optional local execution feature (via `child_process.exec`) runs code directly on the host machine.
+    *   **Status**: **DISABLED BY DEFAULT** in production configuration.
+    *   **Risk**: This permits arbitrary code execution. It is intended **strictly for local development** or trusted private environments.
+*   **Sandboxing**: The current implementation does not utilize container isolation (like Docker siblings) or microVMs per request. For a public-facing deployment, execution **must** be offloaded to a hardened sandbox environment (e.g., gVisor, Firecracker, or a dedicated execution SaaS).
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+*   Node.js v16+
+*   npm or yarn
 
-- Node.js (v16 or higher)
-- npm or yarn
+### Local Development
 
-### Installation
+1.  **Clone & Install**
+    ```bash
+    git clone https://github.com/bharathkumar39293/collaborative-code-editor.git
+    cd collaborative-code-editor
+    npm install
+    ```
 
-1. Clone the repository:
-```bash
-git clone https://github.com/bharathkumar39293/collaborative-code-editor.git
-cd collaborative-code-editor
-```
+2.  **Environment Setup**
+    ```bash
+    cp example.env .env
+    # Edit .env to configure VITE_SOCKET_SERVER_URL and CLIENT_ORIGIN
+    ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+3.  **Run Application**
+    ```bash
+    # Terminal 1: Start Backend
+    npm start
+    
+    # Terminal 2: Start Frontend
+    npm run dev
+    ```
 
-3. Create a `.env` file (optional, for custom configuration):
-```bash
-cp example.env .env
-```
+## 🔮 Future Roadmap
 
-Edit `.env` if needed:
-```
-VITE_SOCKET_SERVER_URL=http://localhost:5000
-VITE_SERVER_PORT=5000
-```
+This project is an evolving engineering artifact. Planned improvements include:
 
-4. Start the development server:
-```bash
-# Start the backend server
-npm start
-
-# In a new terminal, start the frontend dev server
-npm run dev
-```
-
-5. Open your browser and navigate to `http://localhost:5173`
-
-## 📦 Building for Production
-
-```bash
-# Build the frontend
-npm run build
-
-# The built files will be in the `dist` directory
-# The server will automatically serve these files in production mode
-```
-
-## 🐳 Docker Deployment
-
-The project includes Docker support for easy deployment:
-
-```bash
-# Build and run with docker-compose
-docker-compose up -d
-```
-
-Make sure to update the `docker-compose.yml` file with your Docker username if needed.
-
-## 🏗️ Project Structure
-
-```
-realtime-collaborative-code-editor/
-├── src/
-│   ├── actions/          # Socket.io action definitions
-│   ├── components/       # React components
-│   │   ├── Client.jsx    # User avatar component
-│   │   ├── Editor.jsx    # CodeMirror editor wrapper
-│   │   └── Header.jsx    # App header with room info
-│   ├── pages/            # Page components
-│   │   ├── Home.jsx      # Landing page
-│   │   └── EditorPage.jsx # Main editor page
-│   ├── atoms.js          # Recoil state management
-│   ├── socket.js         # Socket.io client setup
-│   └── App.jsx           # Main app component
-├── server.js             # Express + Socket.io server
-├── docker-compose.yml    # Docker configuration
-└── package.json          # Dependencies
-```
-
-## 🛠️ Technologies Used
-
-- **Frontend**:
-  - React 18.2.0
-  - Vite 7.1.2
-  - CodeMirror 5.65.20
-  - Recoil (State management)
-  - React Router DOM 7.8.2
-  - React Hot Toast (Notifications)
-  - React Avatar (User avatars)
-
-- **Backend**:
-  - Express 4.21.2
-  - Socket.io 4.8.1
-  - Helmet (Security)
-  - Compression (Performance)
-
-- **Code Execution**:
-  - Pyodide (Python in-browser)
-  - Remote compilation services (Java, C/C++)
-
-## 🎨 Available Themes
-
-- Monokai
-- Material
-- Material Darker
-- Material Palenight
-- Dracula
-- Twilight
-- Cobalt
-- Eclipse
-- Blackboard
-- Neo
-- Nord
-- Seti
-- Ruby Blue
-- Midnight
-
-## 🔒 Security Features
-
-- Helmet.js for security headers
-- CORS protection with configurable allowed origins
-- Input validation and sanitization
-- Secure code execution sandboxing
-
-## 📝 Usage
-
-1. **Create a Room**: Enter your username and click "Create Room"
-2. **Join a Room**: Enter your username and a room ID, then click "Join Room"
-3. **Invite Others**: Use the "Copy Room ID" or "Copy Invite Link" buttons in the sidebar
-4. **Code Together**: Start typing - changes sync in real-time to all connected users
-5. **Run Code**: Click the "▶ Run Code" button to execute your code
-6. **Change Language**: Select a programming language from the dropdown
-7. **Change Theme**: Choose your preferred editor theme
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is open source and available under the MIT License.
-
-## 👤 Author
-
-**Bharath Kumar**
-
-- GitHub: [@bharathkumar39293](https://github.com/bharathkumar39293)
-
-## 🙏 Acknowledgments
-
-- CodeMirror for the excellent code editor
-- Socket.io for real-time communication
-- Pyodide for in-browser Python execution
-- All the amazing open-source contributors
+*   **Consistency**: Migration to **Yjs** to implement CRDTs, ensuring eventual consistency and offline support.
+*   **Editor Upgrade**: Transition to **CodeMirror v6** for improved mobile interaction and accessibility.
+*   **Sandboxing**: Integrate **gVisor** or **Firecracker** for secure, multi-tenant code execution.
+*   **Persistence & Auth**: Implementation of PostgreSQL for document storage and OAuth for user identity.
+*   **Observability**: Adding OpenTelemetry instrumentation for monitoring WebSocket latency and error rates.
 
 ---
-
-Made with ❤️ using React and Socket.io
+**License**: MIT
