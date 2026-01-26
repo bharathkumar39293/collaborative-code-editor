@@ -201,68 +201,63 @@ app.post('/api/run', async (req, res) => {
     // Try multiple execution services in order of preference
     const executionServices = [];
 
-    // Only add local execution on Unix-like systems (not Windows)
-    if (process.platform !== 'win32') {
+    // Enable "Local" (Docker) execution on all platforms now
+    if (true) {
       executionServices.push({
         name: 'Local',
         url: 'local',
         transformRequest: async (lang, code, fetchFn) => ({ lang, code }),
         transformResponse: async (data, fetchFn) => {
-          // Local execution using system compiler
+          // Local execution using Docker Sandbox
           const { lang, code } = data;
           const tempDir = tmpdir();
-          const filePath = join(tempDir, fileName);
-          const execPath = join(tempDir, `exec_${Date.now()}`);
+          const uniqueId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const hostFilePath = join(tempDir, `${uniqueId}_${fileName}`);
 
           try {
-            // Write code to temporary file
-            await writeFile(filePath, code);
+            // Write code to temporary file on host
+            await writeFile(hostFilePath, code);
 
-            // Compile and execute
-            const compiler = lang === 'cpp' ? 'g++' : 'gcc';
-            const compileCmd = `${compiler} -o "${execPath}" "${filePath}" 2>&1`;
-
-            try {
-              const { stdout: compileOutput, stderr: compileError } = await execAsync(compileCmd);
-
-              if (compileError) {
-                return {
-                  stdout: '',
-                  stderr: `Compilation Error:\n${compileError}`,
-                  exitCode: 1,
-                };
-              }
-            } catch (compileErr) {
-              // Check if compiler is not installed
-              if (compileErr.message.includes('not found') || compileErr.message.includes('command not found')) {
-                throw new Error(`${compiler} compiler is not installed on this system. Please install ${compiler} to use local execution.`);
-              }
-              throw compileErr;
+            let compileRunCmd;
+            if (lang === 'java') {
+              compileRunCmd = `javac /code/${fileName} && java -cp /code Main`;
+            } else {
+              const compiler = lang === 'cpp' ? 'g++' : 'gcc';
+              compileRunCmd = `${compiler} -o /code/output /code/${fileName} && /code/output`;
             }
 
-            // Execute the compiled program
-            const { stdout: runOutput, stderr: runError } = await execAsync(`"${execPath}" 2>&1`);
+            const containerName = `sandbox_${uniqueId}`;
+            const dockerCmd = `docker run --rm --name ${containerName} --network none --cpus 0.5 --memory 128m -v "${hostFilePath}:/code/${fileName}" code-sandbox sh -c "${compileRunCmd}"`;
 
-            return {
-              stdout: runOutput || '',
-              stderr: runError || '',
-              exitCode: 0,
-            };
+            // Execute
+            const { stdout, stderr } = await execAsync(dockerCmd);
 
-          } catch (error) {
-            return {
-              stdout: '',
-              stderr: `Execution Error: ${error.message}`,
-              exitCode: 1,
-            };
-          } finally {
-            // Clean up temporary files
-            try {
-              await unlink(filePath);
-              await unlink(execPath);
-            } catch (cleanupError) {
-              console.warn('Failed to clean up temp files:', cleanupError.message);
+            // Cleanup
+            await unlink(hostFilePath).catch(() => { });
+
+            if (stderr && !stdout) {
+              return { stdout: '', stderr: stderr, exitCode: 1 };
             }
+            return { stdout: stdout, stderr: stderr, exitCode: 0 };
+
+          } catch (e) {
+            // Cleanup host file
+            await unlink(hostFilePath).catch(() => { });
+
+            // Check for Docker daemon errors specifically
+            const errorMsg = (e.message || '') + (e.stderr || '');
+            const isDockerError = errorMsg.includes('docker') ||
+              errorMsg.includes('error during connect') ||
+              errorMsg.includes('cannot find the file specified') ||
+              errorMsg.includes('pipe') ||
+              errorMsg.includes('daemon');
+
+            if (isDockerError) {
+              // Re-throw so the main loop catches it and tries the next service
+              throw new Error(`Docker service unavailable: ${errorMsg}`);
+            }
+
+            return { stdout: '', stderr: errorMsg || 'Execution failed', exitCode: 1 };
           }
         },
       });
@@ -352,11 +347,17 @@ app.post('/api/run', async (req, res) => {
 
         const requestBody = await service.transformRequest(langId, code, fetchFn);
 
-        // Handle local execution differently
+        // Handle local execution
         if (service.name === 'Local') {
-          const result = await service.transformResponse(requestBody, fetchFn);
-          console.log(`${service.name} execution successful`);
-          return res.json(result);
+          try {
+            const result = await service.transformResponse(requestBody, fetchFn);
+            console.log(`${service.name} execution successful`);
+            return res.json(result);
+          } catch (localError) {
+            console.warn(`Local execution unavailable, falling back: ${localError.message}`);
+            lastError = localError;
+            continue; // Proceed to next service (Piston)
+          }
         }
 
         // Handle remote services
@@ -509,4 +510,14 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.SERVER_PORT || 5000;
-server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+server.listen(PORT, async () => {
+  console.log(`🚀 Professional Code Editor Backend running on port ${PORT}`);
+
+  // Diagnostic startup check for Docker
+  try {
+    await execAsync('docker info');
+    console.log('✅ Secure Code Sandbox: Docker is active and available.');
+  } catch (e) {
+    console.warn('⚠️  Secure Code Sandbox: Docker is not active. Falling back to remote execution services.');
+  }
+});
